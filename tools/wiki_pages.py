@@ -46,7 +46,7 @@ def main():
                       lambda m: f"[&sect;{m.group(1)}]({page(lang, sec_page(m.group(1)))})", text)
         for src, name in DOCS.items():
             base = os.path.basename(src)
-            pat = (r"`?(?:\.\./)?(?:docs/)?" + re.escape(base) + r"`?") if src.startswith("docs/") else r"`?apps/sample/(?:README\.md)?`?"
+            pat = (r"`?(?:\.\./)?(?:docs/)?" + re.escape(base) + r"`?") if src.startswith("docs/") else r"`?apps/sample/(?:README\.md)?`?(?![\w./-])"
             text = re.sub(pat, f"[{name.replace('-', ' ')}]({page(lang, name)})", text)
         if in_api:
             text = re.sub(r"(?<![\[\w])§\s*([0-9]+(?:\.[0-9]+)?)(?!\])",
