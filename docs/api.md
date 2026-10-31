@@ -102,7 +102,7 @@ ae.run(Game(), argv=sys.argv[1:], title="Game", fixed_hz=60, app_id="com.example
 | `--render WxH` | `ALIA_RENDER` | 场景（内部）分辨率；默认来自卡带清单的 `[display] render`，再默认 640×360 |
 | `--rotate 0/90/180/270` | `ALIA_DISPLAY_ROTATION` | 最终输出旋转（竖屏） |
 
-PC 上直接运行时（`alia run`），键盘代替手柄，和 Alia Pad 模拟器的键位一样：WASD 左摇杆（按住 Shift 推一半），IJKL 右摇杆，方向键十字键，X East（A），Z South（B），C North（X），V West（Y），E / Q L1 / L2，U / O R1 / R2，F / N L3 / R3，回车 Start，退格 Select，Esc 退出。在卡带里（板子上，或者 `alia run --sim` 的模拟器里，有 `ALIA_CART_DIR`）不读键盘，输入只来自系统的手柄（模拟器把按键变成那个手柄）。按键是按位置的（`ae.SOUTH` 等），Alia Pad 的标签是任天堂式的：A = East，B = South，X = North，Y = West。
+PC 上直接运行时（`alia run`），键盘代替手柄。**键位是平台的**，不是引擎的：Alia Pad 的 SDK 里那一份（`alia/runtime.toml` 的 `[keyboard]`，devkit 的文档有表），控制面板和模拟器用的也是它；`alia run` 从装好的 SDK 读出来交给引擎（`ALIA_KEYMAP`，格式见 `src/platform/keymap.hpp`）。没有 SDK 时只有最少的几个键：WASD 左摇杆，空格 East（A），回车 Start。Esc 退出。在卡带里（板子上，或者 `alia run --sim` 的模拟器里，有 `ALIA_CART_DIR`）不读键盘，输入只来自系统的手柄（模拟器把按键变成那个手柄）。按键是按位置的（`ae.SOUTH` 等），Alia Pad 的标签是任天堂式的：A = East，B = South，X = North，Y = West。
 
 ### 1.2 Engine（`e`）
 

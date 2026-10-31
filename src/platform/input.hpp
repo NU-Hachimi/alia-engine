@@ -2,16 +2,10 @@
 //
 // Buttons are positional (like evdev BTN_SOUTH/EAST/...), so games map them to labels
 // themselves. On Alia Pad the labels are Nintendo-style: A = East, B = South, X = North,
-// Y = West. On the PC (run directly, not in a cart) the keyboard stands in for a gamepad, in the
-// Alia Pad simulator's layout (the same keys there):
-//
-//   WASD           left stick (Shift: half)     IJKL        right stick
-//   arrow keys     D-pad                        X / Z       East (A) / South (B)
-//   C / V          North (X) / West (Y)         E / Q       L1 / L2      U / O   R1 / R2
-//   F / N          L3 / R3                      Enter       Start        Backspace  Select
-//   Esc            quit
-//
-// In a cart (ALIA_CART_DIR set) the keyboard is ignored: the system's gamepad is the input.
+// Y = West. On the PC (run directly, not in a cart) the keyboard stands in for a gamepad. Its layout is the
+// platform's (the Alia Pad devkit's, the same as the simulator's): `alia run` hands it to the engine as ALIA_KEYMAP
+// (window_sdl.cpp says the format). Without it there's only a minimal set: WASD left stick, Space East (A),
+// Enter Start; Esc quits. In a cart (ALIA_CART_DIR set) the keyboard is ignored: the system's gamepad is the input.
 #pragma once
 
 #include <cstdint>

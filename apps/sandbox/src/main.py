@@ -13,12 +13,12 @@ Everything but the HUD and the far beacon is a world node (docs/api.md §3): spa
 in fixed_update, drawn and interpolated by the engine. The beacon goes through draw() each frame,
 to show both paths side by side.
 
-Controls (gamepad / keyboard):
-    left stick  / WASD         move            right stick / IJKL     look
-    L1, R1      / E, U         down, up        L3          / F        back to the start
-    X (north)   / C            distance fog    Y (west)    / V        ground fog
-    A (east)    / X            sun turns       B (south)   / Z        help on / off
-    START       / Enter        next palette    SELECT      / Backspace  red overlay (damage flash)
+Controls (the gamepad; on the PC the keyboard in the platform's layout, docs/api.md §1):
+    left stick     move            right stick    look
+    L1, R1         down, up        L3             back to the start
+    X (north)      distance fog    Y (west)       ground fog
+    A (east)       sun turns       B (south)      help on / off
+    START          next palette    SELECT         red overlay (damage flash)
 """
 
 import argparse

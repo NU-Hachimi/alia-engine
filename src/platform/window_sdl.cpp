@@ -3,24 +3,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <string>
+#include <vector>
 
 #include "core/log.hpp"
+#include "platform/keymap.hpp"
 #include "platform/surface.hpp"
 
 namespace alia::platform {
 namespace {
-
-struct KeyBinding {
-    SDL_Keycode key;
-    uint32_t button;
-};
-// input.hpp has the table in words.
-constexpr KeyBinding kKeyButtons[] = {
-    {SDLK_X, kEast}, {SDLK_Z, kSouth}, {SDLK_C, kNorth}, {SDLK_V, kWest},
-    {SDLK_E, kL1}, {SDLK_Q, kL2}, {SDLK_U, kR1}, {SDLK_O, kR2}, {SDLK_F, kL3}, {SDLK_N, kR3},
-    {SDLK_RETURN, kStart}, {SDLK_BACKSPACE, kSelect},
-    {SDLK_UP, kUp}, {SDLK_DOWN, kDown}, {SDLK_LEFT, kLeft}, {SDLK_RIGHT, kRight},
-};
 
 struct PadBinding {
     SDL_GamepadButton pad;
@@ -59,6 +50,13 @@ public:
         // that gamepad, so reading the keyboard here as well would count every key twice. Direct runs read both.
         keyboard_ = std::getenv("ALIA_CART_DIR") == nullptr;
         if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) return fail(error, "SDL_Init");
+        const char* given = std::getenv("ALIA_KEYMAP");
+        std::string skipped;
+        keys_ = parse_keymap(given && *given ? given : kMinimalKeymap, &skipped);
+        if (keyboard_ && !(given && *given))
+            ALIA_INFO("keyboard: a minimal set (WASD, Space, Enter, Esc); `alia run` passes the platform's layout (ALIA_KEYMAP)");
+        if (!skipped.empty()) ALIA_WARN("ALIA_KEYMAP: skipped what isn't a button or a key name:%s", skipped.c_str());
+        if (log_input_ && given) ALIA_INFO("keymap: %s", given);
         // GLES 3.0 everywhere: the same API and shaders on the PC as on the board's FD702.
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -136,24 +134,28 @@ public:
     }
 
 private:
-    static uint32_t key_button(SDL_Keycode k) {
-        for (const KeyBinding& b : kKeyButtons)
-            if (b.key == k) return b.button;
-        return 0;
+    uint32_t key_button(SDL_Keycode k) const {
+        uint32_t bits = 0;
+        for (const auto& [key, button] : keys_.buttons)
+            if (key == uint32_t(k)) bits |= button;
+        return bits;
     }
 
     void read_input(uint32_t pressed) {
         InputState in;
         if (keyboard_) {
             const bool* keys = SDL_GetKeyboardState(nullptr);
-            const float tilt = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT] ? 0.5f : 1.0f;  // Shift: half
-            auto key = [&](SDL_Scancode sc) { return keys[sc] ? tilt : 0.0f; };
-            for (const KeyBinding& b : kKeyButtons)
-                if (keys[SDL_GetScancodeFromKey(b.key, nullptr)]) in.held |= b.button;
-            in.lx = key(SDL_SCANCODE_D) - key(SDL_SCANCODE_A);
-            in.ly = key(SDL_SCANCODE_S) - key(SDL_SCANCODE_W);
-            in.rx = key(SDL_SCANCODE_L) - key(SDL_SCANCODE_J);
-            in.ry = key(SDL_SCANCODE_K) - key(SDL_SCANCODE_I);
+            auto any = [&](const std::vector<int>& list) {
+                return std::any_of(list.begin(), list.end(), [&](int sc) { return keys[sc]; });
+            };
+            const float tilt = any(keys_.half) ? 0.5f : 1.0f;
+            auto dir = [&](int i) { return any(keys_.axis[i]) ? tilt : 0.0f; };
+            for (const auto& [key, button] : keys_.buttons)
+                if (keys[SDL_GetScancodeFromKey(SDL_Keycode(key), nullptr)]) in.held |= button;
+            in.lx = dir(1) - dir(0);
+            in.ly = dir(3) - dir(2);
+            in.rx = dir(5) - dir(4);
+            in.ry = dir(7) - dir(6);
             in.lt = in.held & kL2 ? 1.0f : 0.0f;  // the trigger keys pull the triggers all the way
             in.rt = in.held & kR2 ? 1.0f : 0.0f;
         }
@@ -188,6 +190,7 @@ private:
     InputState input_;
     bool log_input_ = false;  // ALIA_INPUT_LOG set: log the mapping and button presses
     bool keyboard_ = true;    // the keyboard stands in for a gamepad (not in a cart: ALIA_CART_DIR set)
+    Keymap keys_;             // which keys are which buttons and stick directions (ALIA_KEYMAP)
 };
 
 }  // namespace

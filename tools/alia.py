@@ -245,6 +245,36 @@ def lay_out(project, out, target="pc", link=False):
 
 # ---- commands --------------------------------------------------------------------------------------
 
+BUTTONS = ("south", "east", "west", "north", "l1", "r1", "l2", "r2", "l3", "r3", "select", "start",
+           "up", "down", "left", "right")
+STICK_DIRS = {"left": ("x", "-"), "right": ("x", "+"), "up": ("y", "-"), "down": ("y", "+")}
+
+
+def keymap():
+    """The platform's keyboard layout (the Alia Pad SDK's alia.runtime.keyboard(), the simulator's too) as the engine's
+    ALIA_KEYMAP (src/platform/keymap.hpp), or None without an SDK that has it: the engine then has a minimal set."""
+    saved, saved_mod = list(sys.path), sys.modules.pop("alia", None)
+    try:  # not this file: run as tools/alia.py, its directory would make `import alia` this tool
+        sys.path[:] = [p for p in sys.path if Path(p or ".").resolve() != HERE]
+        from alia import runtime
+        kb = runtime.keyboard()
+    except Exception:
+        return None
+    finally:
+        sys.path[:] = saved
+        if saved_mod is not None:
+            sys.modules["alia"] = saved_mod
+    names = lambda v: [v] if isinstance(v, str) else list(v)  # noqa: E731
+    parts = [f"{b}={','.join(names(kb[b]))}" for b in BUTTONS if kb.get(b)]
+    for stick, prefix in (("left_stick", "l"), ("right_stick", "r")):
+        for d, (axis, sign) in STICK_DIRS.items():
+            if kb.get(stick, {}).get(d):
+                parts.append(f"{prefix}{axis}{sign}={','.join(names(kb[stick][d]))}")
+    if kb.get("half_tilt"):
+        parts.append("half=" + ",".join(names(kb["half_tilt"])))
+    return ";".join(parts)
+
+
 def cmd_run(project, args):
     if "--sim" in args:  # the cart, PC build, in the devkit's simulator (alia-sdk 0.2+: acart run)
         args = [a for a in args if a != "--sim"]
@@ -259,6 +289,8 @@ def cmd_run(project, args):
         return
     content = lay_out(project, project.build / "dev", link=True)
     env = dict(os.environ, PYTHONPATH=str(content / "python"))
+    if "ALIA_KEYMAP" not in env and (layout := keymap()):
+        env["ALIA_KEYMAP"] = layout  # the platform's keys (the engine keeps no table of its own)
     run([python_for(project), "main.py", *args], cwd=content, env=env)
 
 

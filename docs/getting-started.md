@@ -27,7 +27,7 @@ alia setup
 ```sh
 alia new mygame && cd mygame
 python3.13 -m venv .venv && .venv/bin/pip install pytest   # 项目自己的测试环境，alia 会用它（用 conda 的话装进同一个环境，不建 .venv）
-alia run                  # 开窗口玩（键盘：WASD 走，IJKL 转视角，X = A 键；键位和 Alia Pad 模拟器一样，docs/api.md §1）
+alia run                  # 开窗口玩（键盘按 Alia Pad 平台的键位，devkit 的键位表；docs/api.md §1）
 alia test                 # 测试，在无头引擎里跑
 git init && git add -A && git commit -m "mygame"
 ```
