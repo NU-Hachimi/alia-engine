@@ -2,8 +2,8 @@
 """alia: build, run, test and pack a game made with alia-engine (docs/project.md).
 
     alia new DIR                 a new project in the recommended layout (a small game that runs)
-    alia run [ARGS...]           play it on the PC (window; ARGS go to the game: --demo, --headless, --frames N, ...)
-    alia run --sim [ARGS...]     ... in the Alia Pad simulator instead (the devkit's acart run: the handheld's system)
+    alia run [ARGS...]           play it in the Alia Pad simulator (the devkit's acart run: the handheld's system, in
+                                 Docker; any OS). ARGS go to the game: --demo, --frames N, ...
     alia test [PYTEST ARGS...]   its tests, against a headless engine
     alia exec SCRIPT [ARGS...]   one of its tools (tools/...) with the game and the engine importable
     alia cart [--pc]             the cart: build/cart/ (board) or build/cart-pc/, checked; the board's packed too
@@ -20,10 +20,11 @@ Run it from the project (or anywhere under it): it finds alia.toml. Where the en
     into ~/.cache/alia-engine/<version>/ (ALIA_RELEASES to download from elsewhere). Nothing is compiled.
   - run from an alia-engine checkout (tools/alia.py): built from that source, shared by every project (build/ and
     build-board/ in the checkout); the board build needs the board's sysroot (ALIA_SYSROOT, from the Alia Pad devkit).
-The cart commands use the Alia Pad devkit's acart (on PATH, or ACART). PYTHON is the interpreter for run and test
-(default: the project's .venv if it has one, else python3).
+The cart commands and run use the Alia Pad devkit's acart (on PATH, or ACART). PYTHON is the interpreter for test and
+exec, which still run on this PC (Linux x86_64 only; default: the project's .venv if it has one, else python3).
 
-What a cart holds (and `run` / `test` lay out the same way under build/dev/, with links, so edits show at once):
+What a cart holds (run copies it into build/cart-pc/ each time; test and exec lay it out under build/dev/ with links,
+so edits show at once):
     cart.toml and the files next to it in cart/      the manifest and the art
     content/                                         the project's src/ (main.py at its top)
     content/assets/                                  the project's assets/
@@ -51,8 +52,9 @@ except ImportError:  # tools/alia.py in a checkout
 
 # Run from an alia-engine checkout: the engine is built from that source. Installed: release builds are downloaded.
 SOURCE = HERE.parent if (HERE.parent / "CMakeLists.txt").is_file() and (HERE.parent / "src" / "bindings").is_dir() else None
-_BESIDE = Path(sys.executable).parent / "acart"  # alia-sdk installed in the same environment as this alia
-ACART = os.environ.get("ACART") or shutil.which("acart") or (str(_BESIDE) if _BESIDE.is_file() else "acart")
+# acart: ACART, on PATH, or installed in the same environment as this alia (bin/acart, Windows: Scripts\\acart.exe)
+ACART = (os.environ.get("ACART") or shutil.which("acart") or shutil.which("acart", path=str(Path(sys.executable).parent))
+         or "acart")
 BUILDS = {"pc": "build", "board": "build-board"}  # in the checkout
 ARCH = {"pc": "x86_64", "board": "aarch64"}
 RELEASES = os.environ.get("ALIA_RELEASES", "https://github.com/NU-Hachimi/alia-engine/releases/download")
@@ -211,6 +213,12 @@ def engine_files(target):
     return stage / "python", SOURCE / "plugins"
 
 
+def host_arch():
+    """Which engine build runs on this machine's architecture: the simulator's image runs it natively."""
+    import platform
+    return "board" if platform.machine().lower() in ("aarch64", "arm64") else "pc"
+
+
 def python_for(project):
     """The interpreter that runs the game here: PYTHON, the project's .venv, or the one running alia. Below 3.12 the
     engine can't import (an error); other than the board's 3.13, a warning: the game runs on 3.13 on the board."""
@@ -241,8 +249,12 @@ def _place(src, dest, link):
     elif dest.is_dir():
         shutil.rmtree(dest)
     if link:
-        dest.symlink_to(src.resolve(), target_is_directory=src.is_dir())
-    elif src.is_dir():
+        try:
+            dest.symlink_to(src.resolve(), target_is_directory=src.is_dir())
+            return
+        except OSError:  # Windows without Developer Mode, exFAT...: a copy (edits show after the next alia command)
+            pass
+    if src.is_dir():
         shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     else:
         shutil.copy2(src, dest)
@@ -264,7 +276,7 @@ def lay_out(project, out, target="pc", link=False):
     shutil.copytree(engine, py, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))  # the engine is copied
     alia_plugin.add(project.plugin_dirs(first_party), out, VERSION, quiet=True)
     if link and (sdk := sdk_package()):  # development only: in a cart the system provides `alia`
-        (py / "alia").symlink_to(sdk, target_is_directory=True)
+        _place(sdk, py / "alia", link=True)
     return content
 
 
@@ -289,24 +301,24 @@ def sdk_package():
 
 
 def cmd_run(project, args):
-    if "--sim" in args:  # the cart, PC build, in the devkit's simulator (alia-sdk 0.2+: acart run)
-        args = [a for a in args if a != "--sim"]
-        try:
-            has_run = subprocess.run([ACART, "run", "--help"], capture_output=True).returncode == 0
-        except FileNotFoundError:
-            raise Fail("acart: not found (the Alia Pad devkit's: alia setup installs it)") from None
-        if not has_run:
-            raise Fail("--sim needs the Alia Pad devkit's simulator (acart run, alia-sdk 0.2 or newer)")
-        out = cmd_cart(project, pc=True)
-        run([ACART, "run", out, *args])
-        return
-    content = lay_out(project, project.build / "dev", link=True)
-    env = dict(os.environ, PYTHONPATH=str(content / "python"))
-    run([python_for(project), "main.py", *args], cwd=content, env=env)
+    """The game in the devkit's simulator (acart run): the PC cart, copied fresh, in the alia-runtime image."""
+    try:
+        has_run = subprocess.run([ACART, "run", "--help"], capture_output=True).returncode == 0
+    except FileNotFoundError:
+        raise Fail("acart: not found (the Alia Pad devkit's: alia setup installs it)") from None
+    if not has_run:
+        raise Fail("alia run needs the Alia Pad devkit's simulator (acart run, alia-sdk 0.2 or newer): alia setup")
+    out = cmd_cart(project, pc=True, art=False)
+    run([ACART, "run", out, *args])
 
 
 def dev_env(project):
-    """The development layout (build/dev/content, linked) and an environment that imports the game and the engine."""
+    """The development layout (build/dev/content, linked) and an environment that imports the game and the engine.
+    It runs the engine on this PC: Linux x86_64 only, until test and exec run in the simulator's image too."""
+    import platform
+    if sys.platform != "linux" or platform.machine().lower() not in ("x86_64", "amd64"):
+        raise Fail("alia test and alia exec run the engine on this PC, which needs Linux x86_64 for now "
+                   "(on Windows: in WSL2; docs/getting-started.md). alia run, cart, install and launch work here.")
     content = lay_out(project, project.build / "dev", link=True)
     return dict(os.environ, PYTHONPATH=os.pathsep.join([str(content), str(content / "python")]))
 
@@ -325,7 +337,7 @@ def cmd_test(project, args):
     run([py, "-m", "pytest", "-q", project.tests, *args], cwd=project.root, env=dev_env(project))
 
 
-def cmd_cart(project, pc=False):
+def cmd_cart(project, pc=False, art=True):
     out = project.build / ("cart-pc" if pc else "cart")
     if out.exists():
         shutil.rmtree(out)
@@ -334,15 +346,18 @@ def cmd_cart(project, pc=False):
         _place(path, out / path.name, link=False)
     if not (out / "cart.toml").is_file():
         raise Fail(f"{project.cart_dir}/cart.toml: missing")
-    lay_out(project, out, "pc-cart" if pc else "board")
-    if project.art:  # rendered with the PC engine, headless, from the real game
+    sim = "pc-cart" if host_arch() == "pc" else "board"  # a PC cart: for the simulator, this machine's architecture
+    lay_out(project, out, sim if pc else "board")
+    if art and project.art:  # rendered with the PC engine, headless, from the real game
         run([python_for(project), project.art, out], cwd=project.root, env=dev_env(project))
     if not pc:
         run([ACART, "check", out])
         run([ACART, "pack", out, "-o", project.build / f"{project.name}.acart"])
+    elif sim == "board":
+        run([ACART, "check", out])
     elif "--pc" in subprocess.run([ACART, "check", "--help"], capture_output=True, text=True).stdout:
         run([ACART, "check", "--pc", out])  # x86-64 files, the platform's symbol versions (alia-sdk 0.2+)
-    print(f"cart: {out}")
+    print(f"cart: {out}", flush=True)
     return out
 
 
@@ -474,7 +489,8 @@ def sdk_outdated():
 
 
 def cmd_setup(board=False):
-    """Get ready: the engine for the PC (and the board's with --board) and acart; from a checkout, an `alia` command."""
+    """Get ready: the engine for the simulator (and the board's with --board) and acart; from a checkout, an `alia`
+    command."""
     if SOURCE:  # a checkout: a launcher for this tool, the engine is built from source when needed
         bin_dir = Path.home() / ".local" / "bin"
         bin_dir.mkdir(parents=True, exist_ok=True)
@@ -484,13 +500,15 @@ def cmd_setup(board=False):
         on_path = str(bin_dir) in os.environ.get("PATH", "").split(os.pathsep)
         print(f"made {launcher}" + ("" if on_path else f"; add {bin_dir} to PATH"))
     else:
-        for target in ("pc", "board") if board else ("pc",):
-            print(f"engine {VERSION} for the {target}: {fetch(target)}")
+        sim = host_arch()  # the simulator runs this machine's architecture: on ARM that's the board's build
+        use = {"pc": "the simulator", "board": "the simulator and the board" if sim == "board" else "the board"}
+        for target in dict.fromkeys((sim, "board") if board else (sim,)):
+            print(f"engine {VERSION} for {use[target]}: {fetch(target)}")
     acart = shutil.which(ACART) or (ACART if Path(ACART).is_file() else None)
     if not SOURCE and (not acart or sdk_outdated()):  # installed with pip: put the devkit's SDK next to it
         print(f"acart: installing the Alia Pad devkit's SDK ({ALIA_SDK})")
         if subprocess.run([sys.executable, "-m", "pip", "install", "-q", f"alia-sdk @ {ALIA_SDK}"]).returncode == 0:
-            acart = shutil.which("acart") or str(Path(sys.executable).parent / "acart")
+            acart = shutil.which("acart") or shutil.which("acart", path=str(Path(sys.executable).parent))
     if acart and (shutil.which(acart) or Path(acart).is_file()):
         print(f"acart: {acart}")
     else:

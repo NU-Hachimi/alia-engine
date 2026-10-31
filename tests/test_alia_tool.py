@@ -35,6 +35,22 @@ with tempfile.TemporaryDirectory() as tmp:
                        cwd=content, env=env, capture_output=True, text=True)
     check(r.returncode == 0 and shot.stat().st_size > 1000, "the new game runs headless")
 
+    # alia run: the PC cart, copied, handed to the simulator (a stand-in acart; this build's engine, not Debian's)
+    fake, calls = Path(tmp) / "acart", Path(tmp) / "calls"
+    fake.write_text(f'#!/bin/sh\necho "$@" >> {calls}\n')
+    fake.chmod(0o755)
+    saved = alia.ACART, alia.engine_files
+    alia.ACART = str(fake)
+    alia.engine_files = lambda target: (content / "python", REPO / "plugins")
+    try:
+        alia.cmd_run(project, ["--frames", "5"])
+    finally:
+        alia.ACART, alia.engine_files = saved
+    cart = project.build / "cart-pc"
+    check(f"run {cart} --frames 5" in calls.read_text().splitlines()
+          and (cart / "content" / "main.py").is_file() and not (cart / "content" / "main.py").is_symlink()
+          and (cart / "cart.toml").is_file(), "run: the cart copied into build/cart-pc, run with acart run")
+
 sample = alia.Project.find(REPO / "apps" / "sample")
 with tempfile.TemporaryDirectory() as tmp:
     content = alia.lay_out(sample, Path(tmp), link=False)

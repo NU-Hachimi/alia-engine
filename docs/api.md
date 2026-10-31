@@ -1,6 +1,6 @@
 # alia-engine：游戏 API
 
-> **v0.3.0**（2026-10-30）。v0.3 的接口和 v0.2 一样，变的是平台：PC 上的键位和声音的输出规则来自 Alia Pad 的 SDK（alia-sdk 0.2，§7），`alia run --sim` 在模拟器里运行，随引擎附带 `alia_engine.pyi`（编辑器的补全）。v0.2 在 v0.1.0（E4 定稿）之上只加不改：`alia_kit` 的形状、地面、光、数值、角度、向量和噪声（§7.1），插件（`docs/plugins.md`），游戏项目的布局和 `alia` 工具（`docs/project.md`、`docs/getting-started.md`）。从 §0 快速开始读起；接口在 §1–§7，还没有的在 §8，定下来的决定在 §9。
+> **v0.3.0**（2026-10-30）。v0.3 的接口和 v0.2 一样，变的是平台：PC 上的键位和声音的输出规则来自 Alia Pad 的 SDK（alia-sdk 0.2，§7），`alia run` 在模拟器里运行（不再直接在电脑上运行），随引擎附带 `alia_engine.pyi`（编辑器的补全）。v0.2 在 v0.1.0（E4 定稿）之上只加不改：`alia_kit` 的形状、地面、光、数值、角度、向量和噪声（§7.1），插件（`docs/plugins.md`），游戏项目的布局和 `alia` 工具（`docs/project.md`、`docs/getting-started.md`）。从 §0 快速开始读起；接口在 §1–§7，还没有的在 §8，定下来的决定在 §9。
 > 从 v0.1.0 起接口保持兼容：只加不改；要改的先在这里标"将要变"，下一个次版本再变（`alia_engine.__version__`）。
 > Python 模块 `alia_engine`（下面写作 `ae`），C++ 有同样的一套（`src/runtime/`、`src/world/`、`src/audio/`）。
 > 分层和分工见 `architecture.md` §2、§2.1；资源格式见 `formats.md`；性能预算见 `architecture.md` §6.2；
@@ -102,7 +102,7 @@ ae.run(Game(), argv=sys.argv[1:], title="Game", fixed_hz=60, app_id="com.example
 | `--render WxH` | `ALIA_RENDER` | 场景（内部）分辨率；默认来自卡带清单的 `[display] render`，再默认 640×360 |
 | `--rotate 0/90/180/270` | `ALIA_DISPLAY_ROTATION` | 最终输出旋转（竖屏） |
 
-PC 上直接运行时（`alia run`），键盘代替手柄。**键位是平台的**，不是引擎的：Alia Pad 的 SDK 里那一份（`alia/runtime.toml` 的 `[keyboard]`；表在 devkit 的 `docs/tools.md` §2「在电脑上运行：acart run」的「键盘」），控制面板和模拟器用的也是它；引擎启动时从 SDK 的 `alia.runtime` 读（卡带里系统提供 SDK；`alia run` 把装好的 SDK 链接进它的布局；要临时换键位可以设 `ALIA_KEYMAP`，格式见 `src/platform/keymap.hpp`）。没有 SDK 时只有最少的几个键：WASD 左摇杆，空格 East（A），回车 Start。Esc 退出。在卡带里（板子上，或者 `alia run --sim` 的模拟器里，有 `ALIA_CART_DIR`）不读键盘，输入只来自系统的手柄（模拟器把按键变成那个手柄）。按键是按位置的（`ae.SOUTH` 等），Alia Pad 的标签是任天堂式的：A = East，B = South，X = North，Y = West。
+在模拟器里（`alia run`），键盘由模拟器变成系统的手柄。**键位是平台的**，不是引擎的：Alia Pad 的 SDK 里那一份（`alia/runtime.toml` 的 `[keyboard]`；表在 devkit 的 `docs/tools.md` §2「在电脑上运行：acart run」的「键盘」），控制面板和模拟器用的也是它；在卡带里（板子上，或者模拟器里，有 `ALIA_CART_DIR`）引擎不读键盘，输入只来自系统的手柄。直接运行引擎时（改引擎的人跑 `apps/` 或自己的程序）引擎自己读键盘，键位从 SDK 的 `alia.runtime` 读（要临时换键位可以设 `ALIA_KEYMAP`，格式见 `src/platform/keymap.hpp`）；没有 SDK 时只有最少的几个键：WASD 左摇杆，空格 East（A），回车 Start。Esc 退出。按键是按位置的（`ae.SOUTH` 等），Alia Pad 的标签是任天堂式的：A = East，B = South，X = North，Y = West。
 
 ### 1.2 Engine（`e`）
 

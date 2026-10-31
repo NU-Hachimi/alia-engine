@@ -4,21 +4,30 @@
 
 ## 1. 准备（一次）
 
-**PC**：Linux x86_64，**Python 3.13**（板子上卡带跑的就是 3.13，Alia Pad 平台 1.0 的规定；最低 3.12，但新于 3.13 的语法和标准库在板子上没有，`alia` 会提醒），系统里有 SDL3（3.2 或更新）和 EGL / GLES（Mesa 或显卡驱动）。Debian 13、Ubuntu 25.04、Fedora 42、Arch 这一代的发行版都行：
+游戏总是在 **Alia Pad 的模拟器**里运行：devkit 的 `acart run` 在 Docker 里起一个和掌机一样的系统（同样的 Python 3.13、库、沙箱、手柄和平台规则），引擎随卡带装进去。所以电脑上只需要：
+
+- **Docker**：Linux 上是 Docker Engine（或 Podman），Windows、macOS 上是 Docker Desktop。
+- **Python 3.12 或更新**（只用来运行 `alia` 和 `acart` 这两个命令行工具；游戏不在它里面跑）。
+- 要上板子的话：`adb`（Android platform-tools），和打包用的 `mksquashfs`（Linux：`sudo apt install squashfs-tools`）。
 
 ```sh
-sudo apt install python3-venv libsdl3-0 libegl1 libgles2      # Debian / Ubuntu；Arch：pacman -S sdl3 mesa；Fedora：dnf install SDL3 mesa-libEGL
-```
-
-**alia**（引擎的命令行工具）：装进一个 Python 3.13 的环境，再 `alia setup`。系统自带的不是 3.13（比如 Arch 已经是 3.14）就用 conda：`conda create -n alia python=3.13 pip && conda activate alia`，再从 `pip install` 那行做起。
-
-```sh
-python3.13 -m venv ~/.alia && . ~/.alia/bin/activate            # 以后每次用之前 activate，或者把 ~/.alia/bin 加进 PATH
+python3 -m venv ~/.alia && . ~/.alia/bin/activate            # Windows：py -m venv %USERPROFILE%\.alia，再 %USERPROFILE%\.alia\Scripts\activate
 pip install https://github.com/NU-Hachimi/alia-engine/releases/download/v0.3.0/alia_engine-0.3.0-py3-none-any.whl
 alia setup
 ```
 
-`alia setup` 会下载这个版本编好的引擎（PC 用的；`alia setup --board` 连板子用的一起），并装上 Alia Pad devkit 的 `acart`（打包、安装、启动卡带的工具）。**不用编译任何东西，也不用碰 devkit。**
+`alia setup` 下载这个版本编好的引擎（给模拟器的；`alia setup --board` 连板子用的一起），并装上 Alia Pad devkit 的 `acart`（模拟器、打包、安装卡带的工具）。**不用编译任何东西。** 模拟器的镜像第一次 `alia run` 时自动拉取（约 300 MB）。
+
+各个系统现在的情况：
+
+| | `alia run`（模拟器） | `alia test`、`alia exec` | `alia cart`、上板子 |
+|---|---|---|---|
+| Linux x86_64 | ✅ 有 Wayland 桌面时开窗口，否则在浏览器里 | ✅ | ✅ |
+| Windows | 还不行：Docker Desktop 的虚拟机里没有 `/dev/uinput`，devkit 正在改 | 在 WSL2 里 | 打包要 `mksquashfs`：在 WSL2 里 |
+| macOS | 多半和 Windows 一样卡在 `/dev/uinput`（还没测）；能跑时在浏览器里，软件渲染 | 还不行 | 打包要 `mksquashfs`（Homebrew：`brew install squashfs`） |
+| WSL2（Debian 13） | 同 Linux | ✅ | ✅（USB 用 `usbipd-win` 接进 WSL） |
+
+`alia test` 和 `alia exec` 暂时还在电脑上直接运行无头引擎，只有 Linux x86_64 行，并且要系统里有 Python 3.13、SDL3（3.2 或更新）和 EGL / GLES（Debian 13：`sudo apt install python3-venv libsdl3-0 libegl1 libgles2`）。它们以后也搬进模拟器的镜像，到时候这一段就不需要了。
 
 **板子**：刷好 Alia Pad 的开发镜像，开 adb，用 USB 连上电脑（`adb devices` 能看到它）。
 
@@ -26,17 +35,16 @@ alia setup
 
 ```sh
 alia new mygame && cd mygame
-python3.13 -m venv .venv && .venv/bin/pip install pytest   # 项目自己的测试环境，alia 会用它（用 conda 的话装进同一个环境，不建 .venv）
-alia run                  # 开窗口玩（键盘按 Alia Pad 平台的键位：devkit 的 docs/tools.md §2「键盘」）
+alia run                  # 在模拟器里玩（键盘按 Alia Pad 平台的键位：devkit 的 docs/tools.md §2「键盘」）
+python3.13 -m venv .venv && .venv/bin/pip install pytest   # 项目自己的测试环境，alia test 会用它
 alia test                 # 测试，在无头引擎里跑
 git init && git add -A && git commit -m "mygame"
 ```
 
 `alia new` 生成推荐的布局（`docs/project.md` §1）和一个能跑的小游戏，`src/main.py` 就是 `docs/api.md` §0 的快速开始，从这里改起。
 
-- **编辑器的补全和类型检查**：`alia new` 顺便写了 `pyrightconfig.json`，VS Code（Pylance）、pyright 这类编辑器读它，就认得 `alia_engine`（随引擎附带的 `alia_engine.pyi`：每个类、函数的参数和说明）、`alia_kit` 和你自己的模块。先 `alia run` 一次，让 `build/dev/` 有引擎。已有的项目用 `alia setup --editor` 加上。
-
-- 改了 `src/` 的代码直接 `alia run`：开发时游戏是链接进去的，不用重新打包。
+- **编辑器的补全和类型检查**：`alia new` 顺便写了 `pyrightconfig.json`，VS Code（Pylance）、pyright 这类编辑器读它，就认得 `alia_engine`（随引擎附带的 `alia_engine.pyi`：每个类、函数的参数和说明）、`alia_kit` 和你自己的模块。先 `alia setup --editor` 一次，让 `build/dev/` 有引擎（已有的项目也用它加上配置）。
+- 改了 `src/` 的代码直接 `alia run`：每次都会把项目复制成 PC 版的卡带（`build/cart-pc/`）交给模拟器，没有编译这一步，很快。
 - 资产（`.apak` 资源包、`.wav`、`.json`）放 `assets/`，游戏从 `content/assets/` 读（`docs/project.md` §1）。资源包可以在代码里生成（`alia_pack`），也可以由项目的 `pipeline/` 做好提交进来。
 - 用插件：在 `alia.toml` 的 `[engine] plugins` 里写上（`docs/plugins.md`）。
 
@@ -49,9 +57,8 @@ alia launch               # 在板子上启动（会停掉前台正在跑的卡�
 alia logs                 # 看它的输出；alia stop 停掉
 ```
 
-- `acart` 打包要 `mksquashfs`（`sudo apt install squashfs-tools`）。
 - 卡带清单 `cart/cart.toml` 的格式（标题、操作、分辨率、图标和截图、存档配额）见 Alia Pad devkit 的卡带文档。
-- `alia run --sim` 在 PC 上的 Alia Pad 模拟器里运行（devkit 的 `acart run`：和掌机一样的系统环境、沙箱和手柄，要 Docker），比直接 `alia run` 慢一点，但和板子上一模一样。`alia cart --pc` 只打出 PC 版的卡带（`build/cart-pc/`）。
+- 模拟器里跑的和板子上跑的是同一个卡带目录，只是引擎模块是电脑的架构（x86_64；ARM 的电脑上就是板子的 aarch64）。
 
 ## 4. 引擎的版本
 
@@ -66,7 +73,7 @@ git clone https://github.com/NU-Hachimi/alia-engine.git && cd alia-engine
 python3 tools/alia.py setup       # 在 ~/.local/bin 放一个指向这个源码的 alia；之后项目里的 alia run / test 都从源码编译
 ```
 
-- 编译要 CMake ≥ 3.24、clang、Ninja、SDL3、EGL 和 GLES 的开发包、Python 3.13（README 的"构建和运行"）。
+- 编译要 CMake ≥ 3.24、clang、Ninja、SDL3、EGL 和 GLES 的开发包、Python 3.13（README 的"构建和运行"）。`alia run` 用的模块在 Debian 13 的容器里编（和发布的一样，`tools/release/Dockerfile`），所以还要 Docker。
 - 板子的交叉编译要板子的 sysroot：devkit 的 `sysroot/fetch.sh` 生成（默认 `sysroot/out/aarch64`，约 580 MB），然后 `export ALIA_SYSROOT=<那个目录>`；引擎用自己的 `cmake/aarch64-board.cmake`，C/C++ 的卡带可以用 devkit 的 `sysroot/toolchain-aarch64.cmake`。
 - 在板子上跑引擎自己的测试：`tools/board-deploy.sh`（`docs/architecture.md` §5.1）。
 - 发布一个版本：`tools/release.sh`（两种平台的模块在 Debian 13 容器里编，`--publish` 建 GitHub release）。

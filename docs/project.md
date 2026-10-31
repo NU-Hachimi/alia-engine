@@ -42,18 +42,17 @@ plugins = ["tween"]        # 引擎自带的插件写名字；项目的插件写
 
 ```sh
 alia new mygame            # 新项目：上面的布局，加一个能跑的小游戏和一个测试
-alia run [--demo ...]      # PC 上开窗口玩；后面的参数交给游戏（--headless、--frames N、--screenshot、--stats……）
-alia run --sim [...]       # 在 Alia Pad 模拟器里运行（devkit 的 acart run：和掌机一样的环境）
+alia run [--demo ...]      # 在 Alia Pad 模拟器里玩（devkit 的 acart run：和掌机一样的系统，Docker）；后面的参数交给游戏（--demo、--frames N、--stats……）
 alia test [-k name]        # 测试（pytest），在无头引擎里
 alia exec tools/x.py ...   # 运行项目自己的工具，游戏的模块和引擎都能 import（同 test 的 PYTHONPATH）
-alia cart [--pc]           # 卡带：build/cart/（板子）并打包成 build/<name>.acart；--pc 是给模拟器的 build/cart-pc/
+alia cart [--pc]           # 卡带：build/cart/（板子）并打包成 build/<name>.acart；--pc 只做模拟器的 build/cart-pc/（alia run 每次都做）
 alia install | launch | stop | logs    # 板子上的卡带（用 Alia Pad devkit 的工具）
 alia engine [pc|board]     # 只编译引擎模块（run、test、cart 需要时会自己做）
 alia plugin check DIR      # 检查插件的 plugin.toml
 ```
 
 - **引擎从哪来**：用 pip 装的 `alia`（`docs/getting-started.md`）用同版本编好的引擎，第一次用时从 GitHub release 下载到 `~/.cache/alia-engine/<版本>/`，不编译；从引擎源码运行的 `alia`（`tools/alia.py`）用那份源码编译，结果在源码的 `build/`（PC）和 `build-board/`（板子，交叉编译要板子的 sysroot：`ALIA_SYSROOT`），所有项目共用。`alia --version` 说是哪一种。
-- **Python**：项目有 `.venv/` 就用它（`python3 -m venv .venv && .venv/bin/pip install pytest`），否则 `python3`；`PYTHON=` 可以指定。
+- **Python**：`test`、`exec` 和卡带美术的脚本暂时还在电脑上直接运行（Linux x86_64，Python 3.13：`docs/getting-started.md` §1）。项目有 `.venv/` 就用它（`python3 -m venv .venv && .venv/bin/pip install pytest`），否则 `python3`；`PYTHON=` 可以指定。游戏本身总是在模拟器或板子上的 Python 3.13 里跑。
 - **卡带的内容**（`alia cart`）：
 
   ```
@@ -64,5 +63,6 @@ alia plugin check DIR      # 检查插件的 plugin.toml
   ```
 
   `main.py` 要把 `content/python` 放进 `sys.path`（`alia new` 生成的就有这一行）。
-- **`run` 和 `test` 用同样的布局**：`build/dev/content/` 里，代码和资产是指向 `src/`、`assets/` 的链接（改了马上生效），引擎和插件是复制的。测试的 `PYTHONPATH` 是 `content` 和 `content/python`，所以测试直接 `import` 游戏的模块。
+- **`run` 用卡带的布局**：每次把项目复制成 `build/cart-pc/`（引擎是电脑的架构），交给模拟器；模拟器只读地挂载这个目录，和板子上装好的卡带一样。
+- **`test`、`exec` 用开发布局**：`build/dev/content/` 里，代码和资产是指向 `src/`、`assets/` 的链接（改了马上生效；建不了链接的系统上是复制），引擎和插件是复制的。测试的 `PYTHONPATH` 是 `content` 和 `content/python`，所以测试直接 `import` 游戏的模块。
 - `art`：用 PC 的引擎无头运行，`PYTHONPATH` 同测试；它把图写进卡带目录，`cart.toml` 的 `[art]` 引用它们。
