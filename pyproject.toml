@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alia-engine"
-version = "0.2.1"
+version = "0.3.0"
 description = "alia: make, run, test and pack games on alia-engine for the Alia Pad handheld"
 requires-python = ">=3.12"  # the engine module is abi3 (3.12+); the board runs 3.13 (alia warns otherwise)
 license = "MIT"

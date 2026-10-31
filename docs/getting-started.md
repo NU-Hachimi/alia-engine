@@ -14,7 +14,7 @@ sudo apt install python3-venv libsdl3-0 libegl1 libgles2      # Debian / Ubuntu�
 
 ```sh
 python3.13 -m venv ~/.alia && . ~/.alia/bin/activate            # 以后每次用之前 activate，或者把 ~/.alia/bin 加进 PATH
-pip install https://github.com/NU-Hachimi/alia-engine/releases/download/v0.2.1/alia_engine-0.2.1-py3-none-any.whl
+pip install https://github.com/NU-Hachimi/alia-engine/releases/download/v0.3.0/alia_engine-0.3.0-py3-none-any.whl
 alia setup
 ```
 

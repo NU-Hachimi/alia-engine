@@ -1,6 +1,6 @@
 # alia-engine：游戏 API
 
-> **v0.2.1**（2026-10-30；0.2.1 只改了 `alia` 对 Python 版本的要求：游戏在板上跑的是 3.13）。v0.2 在 v0.1.0（E4 定稿）之上只加不改：`alia_kit` 的形状、地面、光、数值、角度、向量和噪声（§7.1），插件（`docs/plugins.md`），游戏项目的布局和 `alia` 工具（`docs/project.md`、`docs/getting-started.md`）。从 §0 快速开始读起；接口在 §1–§7，还没有的在 §8，定下来的决定在 §9。
+> **v0.3.0**（2026-10-30）。v0.3 的接口和 v0.2 一样，变的是平台：PC 上的键位和声音的输出规则来自 Alia Pad 的 SDK（alia-sdk 0.2，§7），`alia run --sim` 在模拟器里运行，随引擎附带 `alia_engine.pyi`（编辑器的补全）。v0.2 在 v0.1.0（E4 定稿）之上只加不改：`alia_kit` 的形状、地面、光、数值、角度、向量和噪声（§7.1），插件（`docs/plugins.md`），游戏项目的布局和 `alia` 工具（`docs/project.md`、`docs/getting-started.md`）。从 §0 快速开始读起；接口在 §1–§7，还没有的在 §8，定下来的决定在 §9。
 > 从 v0.1.0 起接口保持兼容：只加不改；要改的先在这里标"将要变"，下一个次版本再变（`alia_engine.__version__`）。
 > Python 模块 `alia_engine`（下面写作 `ae`），C++ 有同样的一套（`src/runtime/`、`src/world/`、`src/audio/`）。
 > 分层和分工见 `architecture.md` §2、§2.1；资源格式见 `formats.md`；性能预算见 `architecture.md` §6.2；
@@ -113,6 +113,8 @@ PC 上直接运行时（`alia run`），键盘代替手柄。**键位是平台�
 | `e.create_material(ae.Material(...))` → id、`e.update_material(id, m)` | §2 |
 | `e.load_pack(path)` → `({网格名: id}, {材质名: id})`、`e.load_meshes(path)` → `{网格名: id}` | 资源包 `.apak`；相对路径取卡带的 `content/` |
 | `e.set_palette(rgb_bytes)` | 32 色调色板：最多 32 个 RGB 三元组（`bytes(r, g, b, r, g, b, …)`），索引 0 起。**不调也有一套默认的**（0 黑、1 白、2–5 灰、6 红、7 橙、8 黄、9 黄绿、10 绿、11 青、12 蓝、13 藏青、14 紫、15 品红、16 粉、17 棕、18 棕褐、19 米白、20 草绿、21 深绿、22 石灰、23 石板、24 天蓝、25 暮蓝、26–31 发光用的亮黄、珊瑚、亮青、亮黄绿、亮粉、近白）；有自己画风的游戏换掉它 |
+| `e.world`、`e.actions`、`e.audio`、`e.rumble(...)` | 世界（§3）、输入动作和声音（§7）；常用的相机、角色控制器在 `alia_kit`（§7.1） |
+| `e.particles(...)` | 粒子模板（§6） |
 | `e.frame` | 天空、雾、灯、叠色，帧与帧之间保留（下表）；相机字段跟着 `w.camera`（§3），用世界的相机就不用管 |
 | `e.draw(mesh, model, tint=0, light=ae.Light.MATERIAL, fade=0, ground_fog=True)` | 本帧画一个实例；`model`：行主序 3×4（12 个数）；其余参数是实例覆盖（§2） |
 | `e.hud_rect(x, y, w, h, color)`、`e.hud_text(x, y, text, color, scale, shadow)` | 场景像素坐标，颜色 0xRRGGBBAA |
@@ -128,8 +130,6 @@ PC 上直接运行时（`alia run`），键盘代替手柄。**键位是平台�
 | `sun`、`character` | `travel` (0.35, −0.82, 0.45)，`ambient` 0.5，`diffuse` 0.5 | 两盏平行光：`travel` 是**光走的方向**（从光源指向被照的东西，长度随意），可以直接改 `e.frame.sun.travel = (…)`；材质选用哪盏（§2） |
 | `overlay` | 0 | 全屏叠色 0xRRGGBBAA（受伤闪红），A 为 0 不画 |
 | `eye`、`yaw`、`pitch`、`fov_x`、`near`、`far` | | 相机；用了 `w.camera` 就由它决定（§3） |
-| `e.world`、`e.actions`、`e.audio`、`e.rumble(...)` | 世界（§3）、输入动作和声音（§7）；常用的相机、角色控制器在 `alia_kit`（§7.1） |
-| `e.particles(...)` | 粒子模板（§6） |
 
 ## 2. 材质
 

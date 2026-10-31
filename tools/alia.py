@@ -56,9 +56,11 @@ ACART = os.environ.get("ACART") or shutil.which("acart") or (str(_BESIDE) if _BE
 BUILDS = {"pc": "build", "board": "build-board"}  # in the checkout
 ARCH = {"pc": "x86_64", "board": "aarch64"}
 RELEASES = os.environ.get("ALIA_RELEASES", "https://github.com/NU-Hachimi/alia-engine/releases/download")
-# The Alia Pad devkit's SDK (acart) that this engine version is made with; `alia setup` installs it when acart is missing.
-ALIA_SDK = os.environ.get("ALIA_SDK", "https://github.com/NU-Hachimi/alia-devkit/releases/download/sdk-v0.1.0/"
-                                      "alia_sdk-0.1.0-py3-none-any.whl")
+# The Alia Pad devkit's SDK (acart, alia.runtime) that this engine version is made with; `alia setup` installs it when
+# acart is missing or this environment has an older one.
+SDK_VERSION = "0.2.0"
+ALIA_SDK = os.environ.get("ALIA_SDK", "https://github.com/NU-Hachimi/alia-devkit/releases/download/"
+                                      f"sdk-v{SDK_VERSION}/alia_sdk-{SDK_VERSION}-py3-none-any.whl")
 
 
 def engine_version():
@@ -461,6 +463,16 @@ def test_it_runs():
     print(f"made {target}: cd there and `alia run` (docs/project.md)")
 
 
+def sdk_outdated():
+    """This environment has an alia-sdk older than SDK_VERSION (not one installed elsewhere: that's the user's)."""
+    from importlib.metadata import PackageNotFoundError, version
+    try:
+        have = version("alia-sdk")
+    except PackageNotFoundError:
+        return False
+    return not alia_plugin.version_ok(have, f">={SDK_VERSION}")
+
+
 def cmd_setup(board=False):
     """Get ready: the engine for the PC (and the board's with --board) and acart; from a checkout, an `alia` command."""
     if SOURCE:  # a checkout: a launcher for this tool, the engine is built from source when needed
@@ -475,7 +487,7 @@ def cmd_setup(board=False):
         for target in ("pc", "board") if board else ("pc",):
             print(f"engine {VERSION} for the {target}: {fetch(target)}")
     acart = shutil.which(ACART) or (ACART if Path(ACART).is_file() else None)
-    if not acart and not SOURCE:  # installed with pip: put the devkit's SDK next to it
+    if not SOURCE and (not acart or sdk_outdated()):  # installed with pip: put the devkit's SDK next to it
         print(f"acart: installing the Alia Pad devkit's SDK ({ALIA_SDK})")
         if subprocess.run([sys.executable, "-m", "pip", "install", "-q", f"alia-sdk @ {ALIA_SDK}"]).returncode == 0:
             acart = shutil.which("acart") or str(Path(sys.executable).parent / "acart")
