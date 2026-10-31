@@ -31,6 +31,9 @@ def main():
     def show(path):
         return subprocess.run(["git", "show", f"{tag}:{path}"], capture_output=True, text=True, check=True).stdout
 
+    def exists(path):  # a game project's own src/main.py etc. aren't the repository's
+        return subprocess.run(["git", "cat-file", "-e", f"{tag}:{path.rstrip('/')}"], capture_output=True).returncode == 0
+
     def page(lang, name):
         return f"{minor}-{lang}-{name}"
 
@@ -42,6 +45,7 @@ def main():
         text = re.sub(r"`?(?:docs/)?architecture\.md`?(\s*§\s*[0-9]+(?:\.[0-9]+)*)?",
                       lambda m: f"[architecture.md{(' &sect;' + m.group(1).strip()[1:].strip()) if m.group(1) else ''}]"
                                 f"({blob}docs/architecture.md)", text)
+        text = re.sub(r"(tools\.md`?\s*)§", r"\1&sect;", text)  # the devkit's docs/tools.md, not the API
         text = re.sub(r"`?(?:docs/)?api\.md`?\s*§\s*([0-9]+(?:\.[0-9]+)?)",
                       lambda m: f"[&sect;{m.group(1)}]({page(lang, sec_page(m.group(1)))})", text)
         for src, name in DOCS.items():
@@ -52,7 +56,7 @@ def main():
             text = re.sub(r"(?<![\[\w])§\s*([0-9]+(?:\.[0-9]+)?)(?!\])",
                           lambda m: f"[&sect;{m.group(1)}]({page(lang, sec_page(m.group(1)))})", text)
         return re.sub(r"`((?:src|tools|tests|python|plugins|apps|cmake|third_party)/[\w./-]+)`",
-                      lambda m: f"[`{m.group(1)}`]({blob}{m.group(1)})", text)
+                      lambda m: f"[`{m.group(1)}`]({blob}{m.group(1)})" if exists(m.group(1)) else m.group(0), text)
 
     def links(text, lang, in_api):
         """rewrite() outside code blocks only."""
