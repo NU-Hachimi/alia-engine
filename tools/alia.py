@@ -66,6 +66,8 @@ def engine_version():
 
 
 VERSION = engine_version()
+BOARD_PYTHON = (3, 13)   # what Alia Pad gives python carts (platform 1.0; the devkit's docs/platform.md)
+MIN_PYTHON = (3, 12)     # the engine module is abi3: it imports on 3.12 and newer
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "alia-engine" / VERSION
 
 
@@ -181,8 +183,27 @@ def engine_files(target):
 
 
 def python_for(project):
+    """The interpreter that runs the game here: PYTHON, the project's .venv, or the one running alia. Below 3.12 the
+    engine can't import (an error); other than the board's 3.13, a warning: the game runs on 3.13 on the board."""
     venv = project.root / ".venv" / "bin" / "python"
-    return os.environ.get("PYTHON") or (str(venv) if venv.exists() else sys.executable)
+    py = os.environ.get("PYTHON") or (str(venv) if venv.exists() else sys.executable)
+    if py not in _CHECKED:
+        _CHECKED.add(py)
+        r = subprocess.run([py, "-c", "import sys; print(*sys.version_info[:2])"], capture_output=True, text=True)
+        have = tuple(int(v) for v in r.stdout.split()) if r.returncode == 0 else None
+        if have is None:
+            raise Fail(f"{py}: not a Python interpreter")
+        if have < MIN_PYTHON:
+            raise Fail(f"{py} is Python {have[0]}.{have[1]}: alia-engine needs 3.12 or newer, the board runs 3.13 "
+                       "(docs/getting-started.md)")
+        if have != BOARD_PYTHON:
+            print(f"alia: warning: {py} is Python {have[0]}.{have[1]}, the board runs {BOARD_PYTHON[0]}.{BOARD_PYTHON[1]}: "
+                  "syntax or standard library newer than that won't be there (develop on 3.13: docs/getting-started.md)",
+                  file=sys.stderr)
+    return py
+
+
+_CHECKED = set()
 
 
 def _place(src, dest, link):

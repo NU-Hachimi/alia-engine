@@ -4,17 +4,17 @@
 
 ## 1. 准备（一次）
 
-**PC**：Linux x86_64，Python ≥ 3.11，系统里有 SDL3（3.2 或更新）和 EGL / GLES（Mesa 或显卡驱动）。Debian 13、Ubuntu 25.04、Fedora 42、Arch 这一代的发行版都行：
+**PC**：Linux x86_64，**Python 3.13**（板子上卡带跑的就是 3.13，Alia Pad 平台 1.0 的规定；最低 3.12，但新于 3.13 的语法和标准库在板子上没有，`alia` 会提醒），系统里有 SDL3（3.2 或更新）和 EGL / GLES（Mesa 或显卡驱动）。Debian 13、Ubuntu 25.04、Fedora 42、Arch 这一代的发行版都行：
 
 ```sh
 sudo apt install python3-venv libsdl3-0 libegl1 libgles2      # Debian / Ubuntu；Arch：pacman -S sdl3 mesa；Fedora：dnf install SDL3 mesa-libEGL
 ```
 
-**alia**（引擎的命令行工具）：装进一个虚拟环境，再 `alia setup`：
+**alia**（引擎的命令行工具）：装进一个 Python 3.13 的环境，再 `alia setup`。系统自带的不是 3.13（比如 Arch 已经是 3.14）就用 conda：`conda create -n alia python=3.13 pip && conda activate alia`，再从 `pip install` 那行做起。
 
 ```sh
-python3 -m venv ~/.alia && . ~/.alia/bin/activate               # 以后每次用之前 activate，或者把 ~/.alia/bin 加进 PATH
-pip install https://github.com/NU-Hachimi/alia-engine/releases/download/v0.2.0/alia_engine-0.2.0-py3-none-any.whl
+python3.13 -m venv ~/.alia && . ~/.alia/bin/activate            # 以后每次用之前 activate，或者把 ~/.alia/bin 加进 PATH
+pip install https://github.com/NU-Hachimi/alia-engine/releases/download/v0.2.1/alia_engine-0.2.1-py3-none-any.whl
 alia setup
 ```
 
@@ -26,7 +26,7 @@ alia setup
 
 ```sh
 alia new mygame && cd mygame
-python3 -m venv .venv && .venv/bin/pip install pytest      # 项目自己的测试环境，alia 会用它
+python3.13 -m venv .venv && .venv/bin/pip install pytest   # 项目自己的测试环境，alia 会用它（用 conda 的话装进同一个环境，不建 .venv）
 alia run                  # 开窗口玩（键盘：WASD 走，方向键转视角）
 alia test                 # 测试，在无头引擎里跑
 git init && git add -A && git commit -m "mygame"
@@ -53,7 +53,7 @@ alia logs                 # 看它的输出；alia stop 停掉
 
 ## 4. 引擎的版本
 
-`alia` 和它用的引擎是同一个版本（`alia --version`）。换版本就装另一个版本的 wheel（`pip install` 那个版本的 URL），`alia setup` 再下载对应的引擎。项目的 `alia.toml` 写它支持哪些版本（`[engine] version = ">=0.2, <1"`），不对时 `alia` 会直接说。每个版本改了什么在 GitHub 的 Releases 页面。
+`alia` 和它用的引擎是同一个版本（`alia --version`）。Python 的版本跟着 Alia Pad 的平台走：平台 1.x 是 3.13，以后换了 Python 平台会升到 2.0。换版本就装另一个版本的 wheel（`pip install` 那个版本的 URL），`alia setup` 再下载对应的引擎。项目的 `alia.toml` 写它支持哪些版本（`[engine] version = ">=0.2, <1"`），不对时 `alia` 会直接说。每个版本改了什么在 GitHub 的 Releases 页面。
 
 ## 5. 改引擎、写原生代码的人
 

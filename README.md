@@ -2,7 +2,7 @@
 
 Alia Pad 掌机的游戏引擎：一个轻量的 C++ 运行时，针对 UNO Q 的 Adreno 702（GLES 3.1、内存带宽约 2 GB/s）设计，同一份代码也在 PC 上运行（当作模拟器的渲染端）。
 
-**现状：v0.2.0（2026-10-30），E0–E2、E3a、E4 完成**：Python 写 3D 掌机游戏的整套接口（[`docs/api.md`](docs/api.md)，从 §0 快速开始读起）、`alia_kit` 小件、插件（[`docs/plugins.md`](docs/plugins.md)，第一个是补间）、示例游戏 Wisp Keeper（`apps/sample/`）；游戏项目的布局和 `alia` 工具（运行、测试、打卡带）见 [`docs/project.md`](docs/project.md)；Megalith 是独立的游戏仓库 `NU-Hachimi/megalith`。下一步 E5 / E6；E3b 等屏幕和 IMU 硬件。 架构见 [`docs/architecture.md`](docs/architecture.md)。构建用 CMake，板上版本在 PC 上交叉编译（clang + 板子的 sysroot，§5.1）。
+**现状：v0.2.1（2026-10-30），E0–E2、E3a、E4 完成**：Python 写 3D 掌机游戏的整套接口（[`docs/api.md`](docs/api.md)，从 §0 快速开始读起）、`alia_kit` 小件、插件（[`docs/plugins.md`](docs/plugins.md)，第一个是补间）、示例游戏 Wisp Keeper（`apps/sample/`）；游戏项目的布局和 `alia` 工具（运行、测试、打卡带）见 [`docs/project.md`](docs/project.md)；Megalith 是独立的游戏仓库 `NU-Hachimi/megalith`。下一步 E5 / E6；E3b 等屏幕和 IMU 硬件。 架构见 [`docs/architecture.md`](docs/architecture.md)。构建用 CMake，板上版本在 PC 上交叉编译（clang + 板子的 sysroot，§5.1）。
 
 **做游戏从这里开始**：[`docs/getting-started.md`](docs/getting-started.md)（装好引擎、`alia new`、在 PC 上玩、打卡带上板子）。下面是改引擎本身的说明。
 
