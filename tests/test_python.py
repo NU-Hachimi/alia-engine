@@ -547,7 +547,6 @@ check(ae.choose_language(["en", "zh"], "zh-CN") == "zh" and ae.localized({"en": 
 
 # The mixer (docs/api.md §7): headless there is no device, mix() renders by hand.
 import io
-import math
 import wave
 
 

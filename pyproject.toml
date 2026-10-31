@@ -1,0 +1,24 @@
+# The `alia` command as a pip package (docs/getting-started.md): tools/alia.py, alia_plugin.py and alia_pack.py as
+# the alia_cli package. The engine itself isn't in it: `alia setup` downloads the release build of the same version.
+# tools/release.sh builds it with the release; the version must match CMakeLists.txt (tests/test_alia_tool.py).
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alia-engine"
+version = "0.2.0"
+description = "alia: make, run, test and pack games on alia-engine for the Alia Pad handheld"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+
+[project.urls]
+Homepage = "https://github.com/NU-Hachimi/alia-engine"
+
+[project.scripts]
+alia = "alia_cli.alia:main"
+
+[tool.setuptools]
+packages = ["alia_cli"]
+package-dir = {"alia_cli" = "tools"}

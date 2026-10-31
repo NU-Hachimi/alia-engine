@@ -12,6 +12,7 @@ if(NOT ALIA_SYSROOT OR NOT EXISTS "${ALIA_SYSROOT}/usr/include")
   message(FATAL_ERROR "the board's sysroot: -DALIA_SYSROOT=<dir> (or ALIA_SYSROOT), a directory with usr/include and usr/lib")
 endif()
 set(ALIA_SYSROOT "${ALIA_SYSROOT}" CACHE PATH "the board's sysroot")
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES ALIA_SYSROOT)  # CMake's compiler checks run this file again
 set(CMAKE_SYSROOT "${ALIA_SYSROOT}")
 
 set(CMAKE_C_COMPILER clang)

@@ -50,7 +50,7 @@ alia engine [pc|board]     # 只编译引擎模块（run、test、cart 需要时
 alia plugin check DIR      # 检查插件的 plugin.toml
 ```
 
-- **引擎**是 `alia` 所在的那个 alia-engine 仓库，编译结果在那个仓库的 `build/`（PC）和 `build-board/`（板子，交叉编译，要板子的 sysroot：来自 Alia Pad 的 devkit，路径由 `ALIA_SYSROOT` 指定），所有项目共用。以后引擎的每个版本会附上编好的模块，`alia` 按 `alia.toml` 的版本取，游戏就完全不用编译 C++。
+- **引擎从哪来**：用 pip 装的 `alia`（`docs/getting-started.md`）用同版本编好的引擎，第一次用时从 GitHub release 下载到 `~/.cache/alia-engine/<版本>/`，不编译；从引擎源码运行的 `alia`（`tools/alia.py`）用那份源码编译，结果在源码的 `build/`（PC）和 `build-board/`（板子，交叉编译要板子的 sysroot：`ALIA_SYSROOT`），所有项目共用。`alia --version` 说是哪一种。
 - **Python**：项目有 `.venv/` 就用它（`python3 -m venv .venv && .venv/bin/pip install pytest`），否则 `python3`；`PYTHON=` 可以指定。
 - **卡带的内容**（`alia cart`）：
 

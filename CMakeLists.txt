@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(alia_engine VERSION 0.1.0 LANGUAGES C CXX)
+project(alia_engine VERSION 0.2.0 LANGUAGES C CXX)
 
 # Layers (docs/architecture.md §2): each is a static library; dependencies only point down.
 #   alia_core (L0) <- alia_platform (L1) <- alia_rhi (L2) <- alia_render (L3)
@@ -147,6 +147,7 @@ if(ALIA_WITH_PYTHON)
   nanobind_add_module(alia_engine STABLE_ABI NB_STATIC src/bindings/module.cpp)
   target_compile_options(alia_engine PRIVATE ${ALIA_WARNINGS})
   target_link_libraries(alia_engine PRIVATE alia_runtime)
+  target_compile_definitions(alia_engine PRIVATE ALIA_VERSION="${PROJECT_VERSION}")
   # alia_kit (python/alia_kit.py): pure-Python helpers that ship beside the module (api.md §7.1); copied next
   # to it whenever the file changes, so PYTHONPATH=build sees both.
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/alia_kit.py
@@ -232,6 +233,7 @@ if(ALIA_BUILD_TESTS)
     set_tests_properties(kit PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     add_test(NAME plugin_tool COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_plugin_tool.py)
     add_test(NAME alia_tool COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_alia_tool.py)
+    set_tests_properties(alia_tool PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     foreach(manifest ${ALIA_PLUGIN_MANIFESTS})  # each plugin's tests/test_*.py, against the build
       get_filename_component(plugin_dir ${manifest} DIRECTORY)
       get_filename_component(plugin_name ${plugin_dir} NAME)

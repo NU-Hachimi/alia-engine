@@ -323,7 +323,7 @@ audio::PlayParams play_params(float volume, float pan, float pitch, bool loop, d
 
 NB_MODULE(alia_engine, m) {
     m.doc() = "Alia Pad engine: window and input, a handheld 3D pipeline (palette meshes, banded fog, HUD).";
-    m.attr("__version__") = "0.1.0";
+    m.attr("__version__") = ALIA_VERSION;  // CMakeLists.txt project(VERSION)
 
     // Positional buttons (platform/input.hpp). Alia Pad labels: A = EAST, B = SOUTH, X = NORTH, Y = WEST.
     m.attr("SOUTH") = uint32_t(platform::kSouth);

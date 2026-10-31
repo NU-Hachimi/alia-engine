@@ -40,6 +40,10 @@ with tempfile.TemporaryDirectory() as tmp:
     content = alia.lay_out(sample, Path(tmp), link=False)
     check((content / "python" / "alia_tween" / "plugin.toml").is_file() and not (content / "main.py").is_symlink(),
           "the sample's layout carries the tween plugin (alia.toml) and copies its files")
+import alia_engine  # noqa: E402  (PYTHONPATH: the build)
+pyproject = (REPO / "pyproject.toml").read_text()
+check(alia.VERSION == alia_engine.__version__ and f'version = "{alia.VERSION}"' in pyproject,
+      f"one version everywhere: CMakeLists.txt, the module, pyproject.toml ({alia.VERSION})")
 try:
     alia.Project.find(Path("/"))
     check(False, "outside a project: an error")
