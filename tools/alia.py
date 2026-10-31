@@ -61,7 +61,7 @@ ARCH = {"pc": "x86_64", "board": "aarch64"}
 RELEASES = os.environ.get("ALIA_RELEASES", "https://github.com/NU-Hachimi/alia-engine/releases/download")
 # The Alia Pad devkit's SDK (acart, alia.runtime) that this engine version is made with; `alia setup` installs it when
 # acart is missing or this environment has an older one.
-SDK_VERSION = "0.2.0"
+SDK_VERSION = "0.2.1"
 ALIA_SDK = os.environ.get("ALIA_SDK", "https://github.com/NU-Hachimi/alia-devkit/releases/download/"
                                       f"sdk-v{SDK_VERSION}/alia_sdk-{SDK_VERSION}-py3-none-any.whl")
 

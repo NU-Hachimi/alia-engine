@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(alia_engine VERSION 0.3.0 LANGUAGES C CXX)
+project(alia_engine VERSION 0.3.1 LANGUAGES C CXX)
 
 # Layers (docs/architecture.md §2): each is a static library; dependencies only point down.
 #   alia_core (L0) <- alia_platform (L1) <- alia_rhi (L2) <- alia_render (L3)

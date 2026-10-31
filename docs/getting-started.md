@@ -8,11 +8,11 @@
 
 - **Docker**：Linux 上是 Docker Engine（或 Podman），Windows、macOS 上是 Docker Desktop。
 - **Python 3.12 或更新**（只用来运行 `alia` 和 `acart` 这两个命令行工具；游戏、测试都不在它里面跑）。
-- 要上板子的话：`adb`（Android platform-tools）。打包卡带用 `mksquashfs`，电脑上有就用它（Linux：`sudo apt install squashfs-tools`），没有就自动在运行时镜像里打包。
+- 要上板子的话：`adb`（Android platform-tools）。打包卡带也在运行时镜像里做，电脑上不用装别的。
 
 ```sh
 python3 -m venv ~/.alia && . ~/.alia/bin/activate            # Windows：py -m venv %USERPROFILE%\.alia，再 %USERPROFILE%\.alia\Scripts\activate
-pip install https://github.com/NU-Hachimi/alia-engine/releases/download/v0.3.0/alia_engine-0.3.0-py3-none-any.whl
+pip install https://github.com/NU-Hachimi/alia-engine/releases/download/v0.3.1/alia_engine-0.3.1-py3-none-any.whl
 alia setup
 ```
 
@@ -23,10 +23,10 @@ alia setup
 | | `alia run`（模拟器） | `alia test`、`alia exec`（无头） | `alia cart`、上板子 |
 |---|---|---|---|
 | Linux | ✅ 有 Wayland 桌面时开窗口，否则在浏览器里 | ✅ | ✅ |
-| Windows | 在浏览器里（Docker Desktop 没有 `/dev/uinput`，镜像在用户态模拟同一个手柄；还在真机上验证） | ✅ | ✅（打包自动在镜像里） |
-| macOS | 在浏览器里，软件渲染（手柄同 Windows；还在真机上验证） | ✅（软件渲染） | ✅（打包自动在镜像里） |
+| Windows | 在浏览器里（Docker Desktop 没有 `/dev/uinput`，镜像在用户态模拟同一个手柄；还在真机上验证） | ✅ | ✅ |
+| macOS | 在浏览器里，软件渲染（手柄同 Windows；还在真机上验证） | ✅（软件渲染） | ✅ |
 
-要 Docker 的是 `alia run`、`test`、`exec`、卡带美术，和没有 `mksquashfs` 时的打包；`alia install`、`launch`、`logs` 只用 `adb`。在 Windows 上也可以全在 WSL2（Debian 13）里做，和 Linux 一样（USB 用 `usbipd-win` 接进 WSL）。
+要 Docker 的是 `alia run`、`test`、`exec`、卡带美术和打包（`alia cart`：每个系统都在镜像里打包，打出来的 `.acart` 一样）；`alia install`、`launch`、`logs` 只用 `adb`。在 Windows 上也可以全在 WSL2（Debian 13）里做，和 Linux 一样（USB 用 `usbipd-win` 接进 WSL）。
 
 **板子**：刷好 Alia Pad 的开发镜像，开 adb，用 USB 连上电脑（`adb devices` 能看到它）。
 
