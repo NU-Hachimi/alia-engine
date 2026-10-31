@@ -23,7 +23,7 @@ alia setup
 | | `alia run`（模拟器） | `alia test`、`alia exec`（无头） | `alia cart`、上板子 |
 |---|---|---|---|
 | Linux | ✅ 有 Wayland 桌面时开窗口，否则在浏览器里 | ✅ | ✅ |
-| Windows | 在浏览器里（Docker Desktop 没有 `/dev/uinput`，镜像在用户态模拟同一个手柄；还在真机上验证） | ✅（打包自动在镜像里） |
+| Windows | 在浏览器里（Docker Desktop 没有 `/dev/uinput`，镜像在用户态模拟同一个手柄；还在真机上验证） | ✅ | ✅（打包自动在镜像里） |
 | macOS | 在浏览器里，软件渲染（手柄同 Windows；还在真机上验证） | ✅（软件渲染） | ✅（打包自动在镜像里） |
 
 要 Docker 的是 `alia run`、`test`、`exec`、卡带美术，和没有 `mksquashfs` 时的打包；`alia install`、`launch`、`logs` 只用 `adb`。在 Windows 上也可以全在 WSL2（Debian 13）里做，和 Linux 一样（USB 用 `usbipd-win` 接进 WSL）。
