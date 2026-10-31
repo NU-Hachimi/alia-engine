@@ -42,6 +42,7 @@ plugins = ["tween"]        # 引擎自带的插件写名字；项目的插件写
 ```sh
 alia new mygame            # 新项目：上面的布局，加一个能跑的小游戏和一个测试
 alia run [--demo ...]      # PC 上开窗口玩；后面的参数交给游戏（--headless、--frames N、--screenshot、--stats……）
+alia run --sim [...]       # 在 Alia Pad 模拟器里运行（devkit 的 acart run：和掌机一样的环境）
 alia test [-k name]        # 测试（pytest），在无头引擎里
 alia exec tools/x.py ...   # 运行项目自己的工具，游戏的模块和引擎都能 import（同 test 的 PYTHONPATH）
 alia cart [--pc]           # 卡带：build/cart/（板子）并打包成 build/<name>.acart；--pc 是给模拟器的 build/cart-pc/

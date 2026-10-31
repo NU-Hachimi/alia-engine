@@ -3,6 +3,7 @@
 
     alia new DIR                 a new project in the recommended layout (a small game that runs)
     alia run [ARGS...]           play it on the PC (window; ARGS go to the game: --demo, --headless, --frames N, ...)
+    alia run --sim [ARGS...]     ... in the Alia Pad simulator instead (the devkit's acart run: the handheld's system)
     alia test [PYTEST ARGS...]   its tests, against a headless engine
     alia exec SCRIPT [ARGS...]   one of its tools (tools/...) with the game and the engine importable
     alia cart [--pc]             the cart: build/cart/ (board) or build/cart-pc/, checked; the board's packed too
@@ -122,7 +123,12 @@ class Project:
 
 def run(cmd, **kw):
     print("+ " + " ".join(str(c) for c in cmd), file=sys.stderr)
-    if subprocess.run([str(c) for c in cmd], **kw).returncode:
+    try:
+        code = subprocess.run([str(c) for c in cmd], **kw).returncode
+    except FileNotFoundError:
+        hint = " (the Alia Pad devkit's: alia setup installs it)" if str(cmd[0]) == ACART else ""
+        raise Fail(f"{cmd[0]}: not found{hint}") from None
+    if code:
         raise Fail(f"{Path(str(cmd[0])).name} failed")
 
 
@@ -240,6 +246,17 @@ def lay_out(project, out, target="pc", link=False):
 # ---- commands --------------------------------------------------------------------------------------
 
 def cmd_run(project, args):
+    if "--sim" in args:  # the cart, PC build, in the devkit's simulator (alia-sdk 0.2+: acart run)
+        args = [a for a in args if a != "--sim"]
+        try:
+            has_run = subprocess.run([ACART, "run", "--help"], capture_output=True).returncode == 0
+        except FileNotFoundError:
+            raise Fail("acart: not found (the Alia Pad devkit's: alia setup installs it)") from None
+        if not has_run:
+            raise Fail("--sim needs the Alia Pad devkit's simulator (acart run, alia-sdk 0.2 or newer)")
+        out = cmd_cart(project, pc=True)
+        run([ACART, "run", out, *args])
+        return
     content = lay_out(project, project.build / "dev", link=True)
     env = dict(os.environ, PYTHONPATH=str(content / "python"))
     run([python_for(project), "main.py", *args], cwd=content, env=env)
@@ -281,6 +298,7 @@ def cmd_cart(project, pc=False):
     if not pc:
         run([ACART, "pack", out, "-o", project.build / f"{project.name}.acart"])
     print(f"cart: {out}")
+    return out
 
 
 def cart_id(project):

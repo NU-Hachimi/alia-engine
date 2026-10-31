@@ -9,7 +9,7 @@ cd apps/sample
 ../../tools/alia.py cart && ../../tools/alia.py install && ../../tools/alia.py launch   # 作为卡带在板子上跑
 ```
 
-操作：左摇杆走路，右摇杆转视角，B（South）放光束，A（East）开始，Start 暂停。键盘：WASD、方向键、J、空格、退格（`src/platform/input.hpp`）。
+操作：左摇杆走路，右摇杆转视角，B（South）放光束，A（East）开始，Start 暂停。键盘：WASD 走，IJKL 转视角，Z 放光束，X 开始，回车暂停（Alia Pad 模拟器的键位，`docs/api.md` §1）。
 
 ## 它是怎么组织的
 

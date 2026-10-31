@@ -27,7 +27,7 @@ alia setup
 ```sh
 alia new mygame && cd mygame
 python3.13 -m venv .venv && .venv/bin/pip install pytest   # 项目自己的测试环境，alia 会用它（用 conda 的话装进同一个环境，不建 .venv）
-alia run                  # 开窗口玩（键盘：WASD 走，方向键转视角）
+alia run                  # 开窗口玩（键盘：WASD 走，IJKL 转视角，X = A 键；键位和 Alia Pad 模拟器一样，docs/api.md §1）
 alia test                 # 测试，在无头引擎里跑
 git init && git add -A && git commit -m "mygame"
 ```
@@ -49,7 +49,7 @@ alia logs                 # 看它的输出；alia stop 停掉
 
 - `acart` 打包要 `mksquashfs`（`sudo apt install squashfs-tools`）。
 - 卡带清单 `cart/cart.toml` 的格式（标题、操作、分辨率、图标和截图、存档配额）见 Alia Pad devkit 的卡带文档。
-- `alia cart --pc` 打一个 PC 版的卡带（`build/cart-pc/`），给模拟器用。
+- `alia run --sim` 在 PC 上的 Alia Pad 模拟器里运行（devkit 的 `acart run`：和掌机一样的系统环境、沙箱和手柄，要 Docker），比直接 `alia run` 慢一点，但和板子上一模一样。`alia cart --pc` 只打出 PC 版的卡带（`build/cart-pc/`）。
 
 ## 4. 引擎的版本
 

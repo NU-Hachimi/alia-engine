@@ -16,8 +16,10 @@ struct KeyBinding {
 };
 // input.hpp has the table in words.
 constexpr KeyBinding kKeyButtons[] = {
-    {SDLK_SPACE, kEast}, {SDLK_RETURN, kEast}, {SDLK_J, kSouth}, {SDLK_K, kNorth}, {SDLK_L, kWest},
-    {SDLK_Q, kL1}, {SDLK_E, kR1}, {SDLK_F, kL3}, {SDLK_G, kR3}, {SDLK_TAB, kSelect}, {SDLK_BACKSPACE, kStart},
+    {SDLK_X, kEast}, {SDLK_Z, kSouth}, {SDLK_C, kNorth}, {SDLK_V, kWest},
+    {SDLK_E, kL1}, {SDLK_Q, kL2}, {SDLK_U, kR1}, {SDLK_O, kR2}, {SDLK_F, kL3}, {SDLK_N, kR3},
+    {SDLK_RETURN, kStart}, {SDLK_BACKSPACE, kSelect},
+    {SDLK_UP, kUp}, {SDLK_DOWN, kDown}, {SDLK_LEFT, kLeft}, {SDLK_RIGHT, kRight},
 };
 
 struct PadBinding {
@@ -53,6 +55,9 @@ public:
         // the compositor may not give our window keyboard focus: take gamepad input regardless.
         SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
         log_input_ = std::getenv("ALIA_INPUT_LOG") != nullptr;
+        // In a cart (the handheld, or the PC simulator) the system's gamepad is the input: the simulator turns keys into
+        // that gamepad, so reading the keyboard here as well would count every key twice. Direct runs read both.
+        keyboard_ = std::getenv("ALIA_CART_DIR") == nullptr;
         if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) return fail(error, "SDL_Init");
         // GLES 3.0 everywhere: the same API and shaders on the PC as on the board's FD702.
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -80,6 +85,7 @@ public:
             switch (e.type) {
             case SDL_EVENT_QUIT: return false;
             case SDL_EVENT_KEY_DOWN:
+                if (!keyboard_) break;
                 if (e.key.key == SDLK_ESCAPE) return false;
                 if (!e.key.repeat) pressed |= key_button(e.key.key);
                 break;
@@ -138,14 +144,19 @@ private:
 
     void read_input(uint32_t pressed) {
         InputState in;
-        const bool* keys = SDL_GetKeyboardState(nullptr);
-        auto key = [&](SDL_Scancode sc) { return keys[sc] ? 1.0f : 0.0f; };
-        for (const KeyBinding& b : kKeyButtons)
-            if (keys[SDL_GetScancodeFromKey(b.key, nullptr)]) in.held |= b.button;
-        in.lx = key(SDL_SCANCODE_D) - key(SDL_SCANCODE_A);
-        in.ly = key(SDL_SCANCODE_S) - key(SDL_SCANCODE_W);
-        in.rx = key(SDL_SCANCODE_RIGHT) - key(SDL_SCANCODE_LEFT);
-        in.ry = key(SDL_SCANCODE_DOWN) - key(SDL_SCANCODE_UP);
+        if (keyboard_) {
+            const bool* keys = SDL_GetKeyboardState(nullptr);
+            const float tilt = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT] ? 0.5f : 1.0f;  // Shift: half
+            auto key = [&](SDL_Scancode sc) { return keys[sc] ? tilt : 0.0f; };
+            for (const KeyBinding& b : kKeyButtons)
+                if (keys[SDL_GetScancodeFromKey(b.key, nullptr)]) in.held |= b.button;
+            in.lx = key(SDL_SCANCODE_D) - key(SDL_SCANCODE_A);
+            in.ly = key(SDL_SCANCODE_S) - key(SDL_SCANCODE_W);
+            in.rx = key(SDL_SCANCODE_L) - key(SDL_SCANCODE_J);
+            in.ry = key(SDL_SCANCODE_K) - key(SDL_SCANCODE_I);
+            in.lt = in.held & kL2 ? 1.0f : 0.0f;  // the trigger keys pull the triggers all the way
+            in.rt = in.held & kR2 ? 1.0f : 0.0f;
+        }
         if (pad_) {
             in.gamepad = true;
             for (const PadBinding& b : kPadButtons)
@@ -156,8 +167,8 @@ private:
             merge(in.ly, axis(pad_, SDL_GAMEPAD_AXIS_LEFTY));
             merge(in.rx, axis(pad_, SDL_GAMEPAD_AXIS_RIGHTX));
             merge(in.ry, axis(pad_, SDL_GAMEPAD_AXIS_RIGHTY));
-            in.lt = std::max(0.0f, axis(pad_, SDL_GAMEPAD_AXIS_LEFT_TRIGGER));
-            in.rt = std::max(0.0f, axis(pad_, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER));
+            in.lt = std::max(in.lt, axis(pad_, SDL_GAMEPAD_AXIS_LEFT_TRIGGER));
+            in.rt = std::max(in.rt, axis(pad_, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER));
             if (in.lt > 0.5f) in.held |= kL2;
             if (in.rt > 0.5f) in.held |= kR2;
         }
@@ -176,6 +187,7 @@ private:
     SDL_Gamepad* pad_ = nullptr;
     InputState input_;
     bool log_input_ = false;  // ALIA_INPUT_LOG set: log the mapping and button presses
+    bool keyboard_ = true;    // the keyboard stands in for a gamepad (not in a cart: ALIA_CART_DIR set)
 };
 
 }  // namespace

@@ -43,7 +43,7 @@ tools/board-deploy.sh [目标目录] [adb 设备]          # 把测试用的编�
 
 | 层 | 内容 |
 |---|---|
-| L1 `platform/input.hpp` | 手柄（SDL3，按位置命名：Alia Pad 上 A = EAST、B = SOUTH、X = NORTH）；PC 上键盘代替手柄（WASD / 方向键 / 空格 / J K L …）。忽略窗口焦点（板上的无头 sway 没有键盘，窗口永远拿不到焦点；谁收手柄由系统决定）。`ALIA_INPUT_LOG=1` 打印映射和按键 |
+| L1 `platform/input.hpp` | 手柄（SDL3，按位置命名：Alia Pad 上 A = EAST、B = SOUTH、X = NORTH）；PC 上直接运行时键盘代替手柄，键位和 Alia Pad 模拟器一样（WASD、IJKL 两个摇杆，方向键十字键，X Z C V 四个键…，`api.md` §1）；在卡带里不读键盘。忽略窗口焦点（板上的无头 sway 没有键盘，窗口永远拿不到焦点；谁收手柄由系统决定）。`ALIA_INPUT_LOG=1` 打印映射和按键 |
 | L3 `render/handheld.hpp` | 一个场景 pass：天空渐变 → 网格（32 色调色板或逐顶点 RGB；太阳光 / 角色光 / 不打光；淡出到雾色）→ 分级距离雾（N 级色带）和贴地雾 → 全屏叠色 → HUD（矩形和 5×7 字体）。包围球视锥剔除 |
 | L4 `asset/pack.hpp` | 资源包 `.apak`（`docs/formats.md`）：PC 上用 `tools/alia_pack.py` 写，`engine.load_meshes(path)` 读，返回 {名字: 网格 id} |
 | L6 `runtime/engine.hpp`、`runtime/app.hpp` | `Engine`：窗口或无窗口、设备、管线、最终 pass；每帧一份绘制列表。`run()`：主循环（固定步长、按键每步只算一次、`SIGTERM`）、卡带清单、运行选项、统计 |
