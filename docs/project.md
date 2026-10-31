@@ -16,6 +16,7 @@ mygame/
   tools/           游戏自己的开发工具：回归快照、卡带美术……（不进卡带）
   pipeline/        资产生产线：源文件（建模、rig 的 JSON、MIDI……）和把它们变成 assets/ 的脚本（不进卡带）
   docs/            设计文档
+  pyrightconfig.json  编辑器的配置（补全、类型检查：引擎的 .pyi 在 build/dev/content/python）；alia new 生成，alia setup --editor 补上
 ```
 
 - **代码和资产分开**：`src/` 只有手写的代码，生成的东西一律不放进来。游戏在 `content/assets/` 找它的资产（`Path(__file__).parent / "assets"`），开发时和卡带里是同一个位置（§3）。

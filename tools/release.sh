@@ -5,7 +5,7 @@
 #   tools/release.sh --publish  ... then make the GitHub release v<version> with it (gh)
 # Both engine modules are built in the Debian 13 container of tools/release/Dockerfile (the board's baseline): the
 # PC one natively, the board one cross-compiled against the board's sysroot (ALIA_SYSROOT, from the Alia Pad devkit).
-#   alia-engine-<v>-linux-x86_64.tar.gz, -linux-aarch64.tar.gz    python/ (alia_engine, alia_kit, alia_pack), plugins/
+#   alia-engine-<v>-linux-x86_64.tar.gz, -linux-aarch64.tar.gz    python/ (alia_engine + its .pyi, alia_kit, alia_pack), plugins/
 #   alia_engine-<v>-py3-none-any.whl                              the alia command (pip install)
 #   SHA256SUMS
 set -euo pipefail
@@ -30,6 +30,7 @@ for arch in x86_64 aarch64; do
     stage=build-release/stage/$name
     rm -rf "$stage" && mkdir -p "$stage/plugins"
     in_box "cmake --install build-release/$arch --prefix $stage > /dev/null"   # python/ (paths are the container's)
+    [ $arch = x86_64 ] || cp build-release/stage/alia-engine-$V-linux-x86_64/python/alia_engine.pyi "$stage/python/"  # the same API
     for manifest in plugins/*/plugin.toml; do                                     # the first-party plugins
         dir=$(dirname "$manifest")
         pkg=$(sed -n 's/^package *= *"\([A-Za-z0-9_]*\)".*/\1/p' "$manifest")

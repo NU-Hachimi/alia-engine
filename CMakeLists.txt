@@ -148,6 +148,13 @@ if(ALIA_WITH_PYTHON)
   target_compile_options(alia_engine PRIVATE ${ALIA_WARNINGS})
   target_link_libraries(alia_engine PRIVATE alia_runtime)
   target_compile_definitions(alia_engine PRIVATE ALIA_VERSION="${PROJECT_VERSION}")
+  # alia_engine.pyi: the module's types and docstrings for editors (autocompletion, type checks), generated from the
+  # built module by nanobind's stubgen; it ships beside the module. A cross build can't import its module: the PC
+  # build's stub is the same, and tools/release.sh puts it in both archives.
+  if(NOT CMAKE_CROSSCOMPILING)
+    nanobind_add_stub(alia_engine_stub MODULE alia_engine OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/alia_engine.pyi
+                      PYTHON_PATH $<TARGET_FILE_DIR:alia_engine> DEPENDS alia_engine)
+  endif()
   # alia_kit (python/alia_kit.py): pure-Python helpers that ship beside the module (api.md §7.1); copied next
   # to it whenever the file changes, so PYTHONPATH=build sees both.
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/alia_kit.py
@@ -264,6 +271,9 @@ set(ALIA_INSTALL_PYTHONDIR python CACHE STRING "Python modules, relative to the 
 set(ALIA_INSTALL_LIBDIR lib CACHE STRING "Shared libraries, relative to the prefix")
 if(ALIA_WITH_PYTHON)
   install(TARGETS alia_engine LIBRARY DESTINATION ${ALIA_INSTALL_PYTHONDIR})
+  if(NOT CMAKE_CROSSCOMPILING)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/alia_engine.pyi DESTINATION ${ALIA_INSTALL_PYTHONDIR})
+  endif()
   # alia_kit, and alia_pack for games that build packs (rigs, meshes) in code: e.load_rigs(PackWriter().bytes())
   install(FILES python/alia_kit.py tools/alia_pack.py DESTINATION ${ALIA_INSTALL_PYTHONDIR})
 endif()

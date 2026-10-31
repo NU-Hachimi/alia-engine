@@ -10,6 +10,8 @@
     alia install | launch | stop | logs     the cart on the board (the devkit's acart)
     alia setup [--board]         get ready: the engine for this version (and the board's), acart; from a checkout,
                                  also an `alia` command in ~/.local/bin
+    alia setup --editor          in a project: an editor config (pyrightconfig.json: VS Code / Pylance, pyright) so
+                                 completion knows alia_engine (its .pyi), alia_kit and the project's own modules
     alia engine [pc|board]       build the engine module from source (run, test and cart do it when needed)
     alia plugin check DIR        is a plugin's plugin.toml right (docs/plugins.md)
 
@@ -347,6 +349,26 @@ def cart_id(project):
         return tomllib.load(f)["cart"]["id"]
 
 
+EDITOR_CONFIG = """// For editors (VS Code with Pylance, pyright): the engine as `alia run` lays it out (build/dev/content/python:
+// alia_engine and its .pyi, alia_kit, alia_pack, the plugins) and the game's own modules (src). `alia setup --editor`
+// writes this and lays build/dev out.
+{
+  "include": ["src", "tests", "tools"],
+  "extraPaths": ["src", "build/dev/content/python"],
+  "pythonVersion": "3.13"
+}
+"""
+
+
+def write_editor_config(root):
+    path = root / "pyrightconfig.json"
+    if path.exists():
+        print(f"{path}: there already; left as it is")
+        return
+    path.write_text(EDITOR_CONFIG)
+    print(f"made {path}")
+
+
 def cmd_new(target):
     target = Path(target)
     if target.exists() and any(target.iterdir()):
@@ -435,6 +457,7 @@ def test_it_runs():
         path.write_text(text)
     for d in ("assets", "plugins", "tools", "pipeline"):
         (target / d).mkdir(exist_ok=True)
+    write_editor_config(target)
     print(f"made {target}: cd there and `alia run` (docs/project.md)")
 
 
@@ -476,6 +499,11 @@ def main(argv=None):
             if len(a.rest) != 1:
                 raise Fail("alia new DIR")
             return cmd_new(a.rest[0]) or 0
+        if a.command == "setup" and "--editor" in a.rest:
+            project = Project.find()
+            write_editor_config(project.root)
+            lay_out(project, project.build / "dev", link=True)  # what the config points at
+            return 0
         if a.command == "setup":
             return cmd_setup(board="--board" in a.rest)
         if a.command == "engine":

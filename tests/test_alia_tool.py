@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp) / "hello"
     alia.cmd_new(root)
     check(all((root / p).exists() for p in ("alia.toml", "cart/cart.toml", "src/main.py", "tests/test_game.py",
-                                            "assets", "plugins", "tools", "pipeline")), "new: the recommended layout")
+                                            "assets", "plugins", "tools", "pipeline", "pyrightconfig.json")), "new: the recommended layout, an editor config")
     project = alia.Project.find(root / "src")
     check(project.root == root and project.name == "hello", "the project is found from inside it")
     content = alia.lay_out(project, project.build / "dev", link=True)

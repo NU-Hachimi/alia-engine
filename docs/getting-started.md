@@ -34,6 +34,8 @@ git init && git add -A && git commit -m "mygame"
 
 `alia new` 生成推荐的布局（`docs/project.md` §1）和一个能跑的小游戏，`src/main.py` 就是 `docs/api.md` §0 的快速开始，从这里改起。
 
+- **编辑器的补全和类型检查**：`alia new` 顺便写了 `pyrightconfig.json`，VS Code（Pylance）、pyright 这类编辑器读它，就认得 `alia_engine`（随引擎附带的 `alia_engine.pyi`：每个类、函数的参数和说明）、`alia_kit` 和你自己的模块。先 `alia run` 一次，让 `build/dev/` 有引擎。已有的项目用 `alia setup --editor` 加上。
+
 - 改了 `src/` 的代码直接 `alia run`：开发时游戏是链接进去的，不用重新打包。
 - 资产（`.apak` 资源包、`.wav`、`.json`）放 `assets/`，游戏从 `content/assets/` 读（`docs/project.md` §1）。资源包可以在代码里生成（`alia_pack`），也可以由项目的 `pipeline/` 做好提交进来。
 - 用插件：在 `alia.toml` 的 `[engine] plugins` 里写上（`docs/plugins.md`）。

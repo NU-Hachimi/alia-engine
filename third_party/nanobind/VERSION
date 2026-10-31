@@ -1,2 +1,2 @@
-wjakob/nanobind 3.1.0 (from the PyPI wheel nanobind-3.1.0-py3-none-any.whl; cmake/ include/ src/ ext/robin_map)
+wjakob/nanobind 3.1.0 (from the PyPI wheel nanobind-3.1.0-py3-none-any.whl; cmake/ include/ src/ (with stubgen.py) ext/robin_map)
 BSD-3-Clause, see LICENSE
