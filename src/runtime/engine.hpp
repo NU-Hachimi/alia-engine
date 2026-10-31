@@ -35,6 +35,10 @@ struct Config {
     int rotation = 0;                        // final pass rotation, clockwise degrees
     bool headless = false;
     bool vsync = true;
+    // The platform's rules (the Alia Pad SDK's alia.runtime; the Python module fills them in when the SDK is there):
+    std::string keymap;              // the PC keyboard as a gamepad (platform/keymap.hpp); ALIA_KEYMAP overrides
+    int audio_frames = 512;          // [audio] game_quantum: the buffer the output stream asks for
+    std::string audio_role = "Game"; // [audio] role: the stream's role for the system's mixer
 };
 
 struct FrameTiming {

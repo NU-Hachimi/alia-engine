@@ -6,7 +6,7 @@ struct Device::Impl {};
 
 Device::Device() : impl_(std::make_shared<Impl>()) {}
 Device::~Device() = default;
-bool Device::open(Mixer&, std::string* error) {
+bool Device::open(Mixer&, const OutputParams&, std::string* error) {
     *error = "built without SDL: no audio";
     return false;
 }

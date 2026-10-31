@@ -79,9 +79,11 @@ struct Device::Impl {
 Device::Device() : impl_(std::make_shared<Impl>()) {}
 Device::~Device() { close(); }
 
-bool Device::open(Mixer& mixer, std::string* error) {
+bool Device::open(Mixer& mixer, const OutputParams& params, std::string* error) {
     close();
-    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "512");  // about 10.7 ms
+    // The platform's asks (the Alia Pad SDK's [audio]); the mixer always mixes 48 kHz stereo, SDL converts if needed.
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, std::to_string(params.frames).c_str());
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_STREAM_ROLE, params.role.c_str());
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         *error = std::string("SDL audio: ") + SDL_GetError();
         return false;

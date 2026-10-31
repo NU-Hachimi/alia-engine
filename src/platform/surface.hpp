@@ -23,6 +23,7 @@ struct SurfaceDesc {
     // moving it to its own workspace on the board).
     const char* app_id = "pad.alia.engine";
     bool vsync = true;
+    const char* keymap = "";  // the platform's keyboard layout (keymap.hpp); empty: ALIA_KEYMAP or a minimal set
 };
 
 class Surface {

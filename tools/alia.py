@@ -259,39 +259,29 @@ def lay_out(project, out, target="pc", link=False):
         shutil.rmtree(py)
     shutil.copytree(engine, py, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))  # the engine is copied
     alia_plugin.add(project.plugin_dirs(first_party), out, VERSION, quiet=True)
+    if link and (sdk := sdk_package()):  # development only: in a cart the system provides `alia`
+        (py / "alia").symlink_to(sdk, target_is_directory=True)
     return content
 
 
 # ---- commands --------------------------------------------------------------------------------------
 
-BUTTONS = ("south", "east", "west", "north", "l1", "r1", "l2", "r2", "l3", "r3", "select", "start",
-           "up", "down", "left", "right")
-STICK_DIRS = {"left": ("x", "-"), "right": ("x", "+"), "up": ("y", "-"), "down": ("y", "+")}
-
-
-def keymap():
-    """The platform's keyboard layout (the Alia Pad SDK's alia.runtime.keyboard(), the simulator's too) as the engine's
-    ALIA_KEYMAP (src/platform/keymap.hpp), or None without an SDK that has it: the engine then has a minimal set."""
-    saved, saved_mod = list(sys.path), sys.modules.pop("alia", None)
-    try:  # not this file: run as tools/alia.py, its directory would make `import alia` this tool
+def sdk_package():
+    """The Alia Pad SDK's `alia` package as installed beside this tool (alia setup), or None. Development layouts link
+    it into content/python/ so the engine reads the platform's rules (alia.runtime) as it does in a cart, where the
+    system provides it. Run as tools/alia.py, this file's own directory would make `import alia` this tool."""
+    import importlib.util
+    saved = list(sys.path)
+    try:
         sys.path[:] = [p for p in sys.path if Path(p or ".").resolve() != HERE]
-        from alia import runtime
-        kb = runtime.keyboard()
-    except Exception:
-        return None
+        spec = importlib.util.find_spec("alia") if "alia" not in sys.modules or sys.modules["alia"].__name__ == "alia" else None
+    except (ImportError, ValueError):
+        spec = None
     finally:
         sys.path[:] = saved
-        if saved_mod is not None:
-            sys.modules["alia"] = saved_mod
-    names = lambda v: [v] if isinstance(v, str) else list(v)  # noqa: E731
-    parts = [f"{b}={','.join(names(kb[b]))}" for b in BUTTONS if kb.get(b)]
-    for stick, prefix in (("left_stick", "l"), ("right_stick", "r")):
-        for d, (axis, sign) in STICK_DIRS.items():
-            if kb.get(stick, {}).get(d):
-                parts.append(f"{prefix}{axis}{sign}={','.join(names(kb[stick][d]))}")
-    if kb.get("half_tilt"):
-        parts.append("half=" + ",".join(names(kb["half_tilt"])))
-    return ";".join(parts)
+    if spec is None or not spec.origin or Path(spec.origin).resolve() == Path(__file__).resolve():
+        return None
+    return Path(spec.origin).parent
 
 
 def cmd_run(project, args):
@@ -308,8 +298,6 @@ def cmd_run(project, args):
         return
     content = lay_out(project, project.build / "dev", link=True)
     env = dict(os.environ, PYTHONPATH=str(content / "python"))
-    if "ALIA_KEYMAP" not in env and (layout := keymap()):
-        env["ALIA_KEYMAP"] = layout  # the platform's keys (the engine keeps no table of its own)
     run([python_for(project), "main.py", *args], cwd=content, env=env)
 
 
@@ -345,9 +333,11 @@ def cmd_cart(project, pc=False):
     lay_out(project, out, "pc-cart" if pc else "board")
     if project.art:  # rendered with the PC engine, headless, from the real game
         run([python_for(project), project.art, out], cwd=project.root, env=dev_env(project))
-    if not pc:  # acart check is the board's (an x86_64 module fails it); the simulator checks PC carts itself
+    if not pc:
         run([ACART, "check", out])
         run([ACART, "pack", out, "-o", project.build / f"{project.name}.acart"])
+    elif "--pc" in subprocess.run([ACART, "check", "--help"], capture_output=True, text=True).stdout:
+        run([ACART, "check", "--pc", out])  # x86-64 files, the platform's symbol versions (alia-sdk 0.2+)
     print(f"cart: {out}")
     return out
 

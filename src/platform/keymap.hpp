@@ -1,6 +1,6 @@
-// The PC keyboard as a gamepad (direct runs, not in a cart). The layout is the platform's, not the engine's: `alia run`
-// reads it from the Alia Pad SDK (alia.runtime.keyboard()) and hands it over as ALIA_KEYMAP, "name=Key[,Key];...",
-// with SDL key names. The names are the buttons (south east west north l1 r1 l2 r2 l3 r3 select start up down left
+// The PC keyboard as a gamepad (direct runs, not in a cart). The layout is the platform's, not the engine's: the
+// Python module reads it from the Alia Pad SDK (alia.runtime.keyboard(); `alia run` links the SDK into its layout) and
+// hands it over in this form, "name=Key[,Key];..." with SDL key names; ALIA_KEYMAP (the same form) overrides it. The names are the buttons (south east west north l1 r1 l2 r2 l3 r3 select start up down left
 // right), the stick directions (lx- lx+ ly- ly+ rx- rx+ ry- ry+; "-" is left / up) and half (held: the sticks at half
 // tilt). An entry is split at its first "=", so "start==" is the "=" key. Without ALIA_KEYMAP, kMinimalKeymap.
 #pragma once

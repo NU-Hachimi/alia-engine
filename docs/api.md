@@ -102,7 +102,7 @@ ae.run(Game(), argv=sys.argv[1:], title="Game", fixed_hz=60, app_id="com.example
 | `--render WxH` | `ALIA_RENDER` | 场景（内部）分辨率；默认来自卡带清单的 `[display] render`，再默认 640×360 |
 | `--rotate 0/90/180/270` | `ALIA_DISPLAY_ROTATION` | 最终输出旋转（竖屏） |
 
-PC 上直接运行时（`alia run`），键盘代替手柄。**键位是平台的**，不是引擎的：Alia Pad 的 SDK 里那一份（`alia/runtime.toml` 的 `[keyboard]`；表在 devkit 的 `docs/tools.md` §2「在电脑上运行：acart run」的「键盘」），控制面板和模拟器用的也是它；`alia run` 从装好的 SDK 读出来交给引擎（`ALIA_KEYMAP`，格式见 `src/platform/keymap.hpp`）。没有 SDK 时只有最少的几个键：WASD 左摇杆，空格 East（A），回车 Start。Esc 退出。在卡带里（板子上，或者 `alia run --sim` 的模拟器里，有 `ALIA_CART_DIR`）不读键盘，输入只来自系统的手柄（模拟器把按键变成那个手柄）。按键是按位置的（`ae.SOUTH` 等），Alia Pad 的标签是任天堂式的：A = East，B = South，X = North，Y = West。
+PC 上直接运行时（`alia run`），键盘代替手柄。**键位是平台的**，不是引擎的：Alia Pad 的 SDK 里那一份（`alia/runtime.toml` 的 `[keyboard]`；表在 devkit 的 `docs/tools.md` §2「在电脑上运行：acart run」的「键盘」），控制面板和模拟器用的也是它；引擎启动时从 SDK 的 `alia.runtime` 读（卡带里系统提供 SDK；`alia run` 把装好的 SDK 链接进它的布局；要临时换键位可以设 `ALIA_KEYMAP`，格式见 `src/platform/keymap.hpp`）。没有 SDK 时只有最少的几个键：WASD 左摇杆，空格 East（A），回车 Start。Esc 退出。在卡带里（板子上，或者 `alia run --sim` 的模拟器里，有 `ALIA_CART_DIR`）不读键盘，输入只来自系统的手柄（模拟器把按键变成那个手柄）。按键是按位置的（`ae.SOUTH` 等），Alia Pad 的标签是任天堂式的：A = East，B = South，X = North，Y = West。
 
 ### 1.2 Engine（`e`）
 
@@ -358,7 +358,7 @@ fx.count, fx.clear(), fx.active = False                       # 关掉：不模�
   - 设备只在窗口模式打开：无头的测试、工具、adb 上的跑分都不出声，可以 `mix()`。`alia-stats` 多了 `voices` 和 `audio_late`（回调比上一次晚了 1.5 个缓冲以上的次数：很可能断音，`stats-protocol.md`）。
   - 和系统侧的约定见 Alia Pad 的卡带文档（devkit）里"声音"一节：
   - 后端 SDL3 audio：一个 48 kHz 立体声的 `SDL_AudioStream`，所有声音（流式音乐 + 载入的音效）在引擎里用 C++ 混好再送进去；不直接用系统的音频库。
-  - 申请 512 帧的 quantum（约 10.7 ms），音效目标延迟 20–30 ms。混音在 SDL 的音频线程里，普通优先级；板上满负载实测没有断音（`architecture.md` §6.2），不需要实时优先级。
+  - 输出流的要求是平台的：Alia Pad SDK 的 `alia.runtime.audio()`（`game_quantum` 申请多大的缓冲，现在 512 帧约 10.7 ms；`role` 流的角色，`Game`），引擎启动时读；没有 SDK 时用同样的默认值。混音器总是 48 kHz 立体声，和设备不一样时 SDL 转换。音效目标延迟 20–30 ms。打开设备不等它：在单独的线程里打开，打开之前游戏是安静的（有的电脑上打开会一直卡住）。混音在 SDL 的音频线程里，普通优先级；板上满负载实测没有断音（`architecture.md` §6.2），不需要实时优先级。
   - 只有播放、只有立体声声像；不录音、不枚举设备（喇叭和耳机的切换游戏察觉不到）。
   - 游戏看不到也改不了系统音量和静音；引擎只提供混音内部的比例。**音乐和音效分开**（2026-10-30 定）：两条总线各有音量（`e.audio.music_volume`、`e.audio.sfx_volume`），游戏可以做成设置菜单里的两个滑条，存进存档。
   - 挂起恢复后接着放缓冲里剩下的几十毫秒，不清空，不通知游戏（§9 第 6 条）。
@@ -381,6 +381,7 @@ fx.count, fx.clear(), fx.active = False                       # 关掉：不模�
   ae.localized({"en": "PRESS START", "zh": "按开始"})   # 直接取文字
   ```
   - `ALIA_LANG` 是启动时读的：游戏运行时用户改了语言，下次启动才生效（Alia Pad 的卡带文档）。卡带的标题和简介的翻译写在 `cart.toml` 的 `[locale.<标签>]` 里，系统自己挑，游戏不用管；引擎读清单时也按同样的规则挑窗口标题（`Manifest::title_for`，旧写法 `title_zh` 算 `[locale.zh]`）。引擎自己的卡带（sandbox、E0）用的是 `[locale.zh]`。
+- **画面输出**：卡带的窗口和屏幕的规格也是平台的（SDK 的 `alia.runtime.display()`：卡带得到的窗口、面板的方向和旋转、刷新率）。现在引擎用合成器给的窗口尺寸就够了；屏幕到货后（E3b）的旋转和 direct scanout 照它做。游戏的渲染分辨率仍然是 `cart.toml` 的 `[display] render`，引擎缩放到输出。
 - **振动**（已实现）：`e.rumble(low, high, ms)` 就是 `SDL_RumbleGamepad`。**马达硬件到货之前一直不支持**（没有"只记日志"的阶段）：`SDL_RumbleGamepad` 返回不支持，`e.rumble` 返回 False，不报错，游戏照常调用就行。
 
 ### 7.1 alia_kit：游戏常用的小件

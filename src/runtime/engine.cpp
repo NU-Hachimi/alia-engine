@@ -31,11 +31,12 @@ bool Engine::open(const Config& cfg, std::string* error) {
     sd.title = cfg_.title.c_str();
     sd.app_id = cfg_.app_id.c_str();
     sd.vsync = cfg.vsync;
+    sd.keymap = cfg_.keymap.c_str();
     surface_ = cfg.headless ? platform::create_headless_surface(sd, error) : platform::create_window_surface(sd, error);
     if (!surface_) return false;
     if (!cfg.headless) {
         std::string why;
-        if (!audio_device_.open(mixer_, &why)) ALIA_INFO("no sound: %s", why.c_str());
+        if (!audio_device_.open(mixer_, {cfg_.audio_frames, cfg_.audio_role}, &why)) ALIA_INFO("no sound: %s", why.c_str());
     }
     dev_ = rhi::create_gles_device();
     if (!pipeline_.init(*dev_, cfg.internal_w, cfg.internal_h, error) || !final_.init(*dev_, error)) {

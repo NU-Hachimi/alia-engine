@@ -15,6 +15,7 @@
 #include <cstring>
 #include <stdexcept>
 
+#include "core/log.hpp"
 #include "runtime/app.hpp"
 #include "runtime/engine.hpp"
 #include "runtime/locale.hpp"
@@ -51,9 +52,55 @@ struct Mesh {
     }
 };
 
+// The platform's rules, from the Alia Pad SDK (its Python package `alia`: on the handheld, in the simulator, and in
+// `alia run`'s layout): [audio] for the output stream, [keyboard] for the PC keyboard (platform/keymap.hpp's format).
+// Without the SDK (or an older one without these), the engine's defaults; a bad value is skipped with a warning.
+std::string names(nb::handle v) {
+    if (nb::isinstance<nb::str>(v)) return nb::cast<std::string>(v);
+    std::string out;
+    for (nb::handle k : v) out += (out.empty() ? "" : ",") + nb::cast<std::string>(k);
+    return out;
+}
+
+void platform_rules(runtime::Config& c) {
+    nb::object rt;
+    try {
+        rt = nb::module_::import_("alia.runtime");
+    } catch (nb::python_error&) {
+        ALIA_INFO("no Alia Pad SDK (alia.runtime): the engine's defaults for sound and the keyboard");
+        return;
+    }
+    try {
+        if (nb::hasattr(rt, "audio")) {
+            nb::dict a = nb::cast<nb::dict>(rt.attr("audio")());
+            if (a.contains("game_quantum")) c.audio_frames = nb::cast<int>(a["game_quantum"]);
+            if (a.contains("role")) c.audio_role = nb::cast<std::string>(a["role"]);
+        }
+        if (nb::hasattr(rt, "keyboard")) {
+            nb::dict k = nb::cast<nb::dict>(rt.attr("keyboard")());
+            std::string map;
+            auto add = [&](const std::string& name, nb::handle keys) { map += (map.empty() ? "" : ";") + name + "=" + names(keys); };
+            for (const char* b : {"south", "east", "west", "north", "l1", "r1", "l2", "r2", "l3", "r3", "select", "start",
+                                  "up", "down", "left", "right"})
+                if (k.contains(b)) add(b, k[b]);
+            for (auto [stick, prefix] : {std::pair{"left_stick", "l"}, std::pair{"right_stick", "r"}}) {
+                if (!k.contains(stick)) continue;
+                nb::dict d = nb::cast<nb::dict>(k[stick]);
+                for (auto [dir, axis] : {std::pair{"left", "x-"}, std::pair{"right", "x+"}, std::pair{"up", "y-"}, std::pair{"down", "y+"}})
+                    if (d.contains(dir)) add(std::string(prefix) + axis, d[dir]);
+            }
+            if (k.contains("half_tilt")) add("half", k["half_tilt"]);
+            c.keymap = map;
+        }
+    } catch (const std::exception& e) {
+        ALIA_WARN("the Alia Pad SDK's alia.runtime: %s; the engine's defaults where it failed", e.what());
+    }
+}
+
 class PyEngine {
 public:
-    explicit PyEngine(const runtime::Config& c) {
+    explicit PyEngine(runtime::Config c) {
+        platform_rules(c);
         std::string err;
         if (!e_.open(c, &err)) throw std::runtime_error("alia_engine: " + err);
     }
@@ -70,6 +117,7 @@ public:
         c.rotation = rotate;
         c.headless = headless;
         c.vsync = vsync;
+        platform_rules(c);
         std::string err;
         if (!e_.open(c, &err)) throw std::runtime_error("alia_engine: " + err);
     }

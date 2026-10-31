@@ -50,11 +50,13 @@ public:
         // that gamepad, so reading the keyboard here as well would count every key twice. Direct runs read both.
         keyboard_ = std::getenv("ALIA_CART_DIR") == nullptr;
         if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) return fail(error, "SDL_Init");
-        const char* given = std::getenv("ALIA_KEYMAP");
+        // The platform's layout (from the Alia Pad SDK, through the engine's config); ALIA_KEYMAP overrides it.
+        const char* env = std::getenv("ALIA_KEYMAP");
+        const char* given = env && *env ? env : (d.keymap && *d.keymap ? d.keymap : nullptr);
         std::string skipped;
-        keys_ = parse_keymap(given && *given ? given : kMinimalKeymap, &skipped);
-        if (keyboard_ && !(given && *given))
-            ALIA_INFO("keyboard: a minimal set (WASD, Space, Enter, Esc); `alia run` passes the platform's layout (ALIA_KEYMAP)");
+        keys_ = parse_keymap(given ? given : kMinimalKeymap, &skipped);
+        if (keyboard_ && !given)
+            ALIA_INFO("keyboard: a minimal set (WASD, Space, Enter, Esc): no Alia Pad SDK with the platform's layout");
         if (!skipped.empty()) ALIA_WARN("ALIA_KEYMAP: skipped what isn't a button or a key name:%s", skipped.c_str());
         if (log_input_ && given) ALIA_INFO("keymap: %s", given);
         // GLES 3.0 everywhere: the same API and shaders on the PC as on the board's FD702.

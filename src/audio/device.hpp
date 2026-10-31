@@ -21,13 +21,17 @@ struct DeviceStats {
     double mix_ms_max = 0;  // the longest mix() since open
 };
 
+// What the platform asks of a game's output stream (the Alia Pad SDK's [audio]).
+struct OutputParams {
+    int frames = 512;              // game_quantum: buffer size asked for (~10.7 ms at 48 kHz)
+    std::string role = "Game";     // the stream's role for the system's mixer (PipeWire media.role)
+};
+
 class Device {
 public:
-    static constexpr int kSampleFrames = 512;  // ~10.7 ms at 48 kHz
-
     Device();
     ~Device();
-    bool open(Mixer& mixer, std::string* error);
+    bool open(Mixer& mixer, const OutputParams& params, std::string* error);
     void close();
     bool is_open() const;
     DeviceStats stats() const;
