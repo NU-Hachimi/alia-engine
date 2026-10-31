@@ -21,7 +21,7 @@ docker build -q -t $IMAGE tools/release > /dev/null
 OPTS="-G Ninja -DCMAKE_BUILD_TYPE=Release -DALIA_BUILD_TESTS=OFF -DALIA_BUILD_APPS=OFF"
 in_box() { docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/src" -v "$ALIA_SYSROOT:/sysroot:ro" -w /src $IMAGE sh -c "$1"; }
 in_box "cmake -S . -B build-release/x86_64 $OPTS -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ > /dev/null &&
-        cmake --build build-release/x86_64 --target alia_engine > /dev/null &&
+        cmake --build build-release/x86_64 --target alia_engine alia_engine_stub > /dev/null &&
         cmake -S . -B build-release/aarch64 $OPTS -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-board.cmake -DALIA_SYSROOT=/sysroot > /dev/null &&
         cmake --build build-release/aarch64 --target alia_engine > /dev/null"
 
