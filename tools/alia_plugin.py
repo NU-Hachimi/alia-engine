@@ -24,7 +24,7 @@ _CLAUSE = re.compile(r"^\s*(>=|<=|==|!=|>|<)\s*(\d+(?:\.\d+){0,2})\s*$")
 
 
 def engine_version():
-    m = re.search(r"project\(alia_engine VERSION (\d+\.\d+\.\d+)", (REPO / "CMakeLists.txt").read_text())
+    m = re.search(r"project\(alia_engine VERSION (\d+\.\d+\.\d+)", (REPO / "CMakeLists.txt").read_text(encoding="utf-8"))
     return m.group(1)
 
 

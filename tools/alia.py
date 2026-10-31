@@ -316,8 +316,8 @@ def cmd_cart(project, pc=False, art=True):
         raise Fail(f"{project.cart_dir}/cart.toml: missing")
     sim = sim_target()  # a PC cart: for the simulator, this machine's architecture
     lay_out(project, out, sim if pc else "board")
-    if art and project.art:  # rendered with the PC engine, headless, from the real game
-        in_image(project, ["python3", work_path(project, project.art), work_path(project, out)])
+    if project.art:
+        art_files(project, out, render=art)
     if not pc:
         run([ACART, "check", out])
         run([ACART, "pack", out, "-o", project.build / f"{project.name}.acart"])
@@ -327,6 +327,26 @@ def cmd_cart(project, pc=False, art=True):
         run([ACART, "check", "--pc", out])  # x86-64 files, the platform's symbol versions (alia-sdk 0.2+)
     print(f"cart: {out}", flush=True)
     return out
+
+
+def art_files(project, out, render):
+    """The cart's art ([art] in cart.toml) that the project's art script renders from the game, headless in the image.
+    A cart renders it afresh; a run (render=False) reuses the last render in build/art/, rendering it only once."""
+    with open(out / "cart.toml", "rb") as f:
+        art = tomllib.load(f).get("art", {})
+    names = [n for v in art.values() for n in (v if isinstance(v, list) else [v]) if isinstance(n, str)]
+    names = [n for n in names if not (project.cart_dir / n).exists()]  # files the cart dir ships are copied already
+    cache = project.build / "art"
+    if render or not all((cache / n).is_file() for n in names):
+        in_image(project, ["python3", work_path(project, project.art), work_path(project, out)])
+        for n in names:
+            if (out / n).is_file():
+                (cache / n).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(out / n, cache / n)
+    else:
+        for n in names:
+            (out / n).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(cache / n, out / n)
 
 
 def cart_id(project):
@@ -350,7 +370,7 @@ def write_editor_config(root):
     if path.exists():
         print(f"{path}: there already; left as it is")
         return
-    path.write_text(EDITOR_CONFIG)
+    path.write_text(EDITOR_CONFIG, encoding="utf-8")
     print(f"made {path}")
 
 
@@ -439,7 +459,7 @@ def test_it_runs():
     for rel, text in files.items():
         path = target / rel
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")  # never the system's (cp1252, GBK...): Python reads source as UTF-8
     for d in ("assets", "plugins", "tools", "pipeline"):
         (target / d).mkdir(exist_ok=True)
     write_editor_config(target)
@@ -463,7 +483,7 @@ def cmd_setup(board=False):
         bin_dir = Path.home() / ".local" / "bin"
         bin_dir.mkdir(parents=True, exist_ok=True)
         launcher = bin_dir / "alia"
-        launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{Path(__file__).resolve()}" "$@"\n')
+        launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{Path(__file__).resolve()}" "$@"\n', encoding="utf-8")
         launcher.chmod(0o755)
         on_path = str(bin_dir) in os.environ.get("PATH", "").split(os.pathsep)
         print(f"made {launcher}" + ("" if on_path else f"; add {bin_dir} to PATH"))

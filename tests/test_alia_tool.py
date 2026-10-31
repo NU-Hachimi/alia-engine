@@ -52,6 +52,20 @@ with tempfile.TemporaryDirectory() as tmp:
               "/work/tests -k runs" in calls.read_text().splitlines()
               and os.readlink(project.build / "dev" / "content" / "main.py") == "../../../src/main.py",
               "test: pytest in the image (acart exec), the project at /work, the layout linked relatively")
+
+        # cart art ([art]): a run renders it once (the stand-in acart renders nothing), then reuses build/art/
+        (root / "cart" / "cart.toml").write_text((root / "cart" / "cart.toml").read_text() + '\n[art]\nicon = "icon.png"\n')
+        project.art = root / "tools" / "art.py"
+        before = len(calls.read_text().splitlines())
+        alia.cmd_run(project, [])
+        rendered = any("art.py" in c for c in calls.read_text().splitlines()[before:])
+        (project.build / "art").mkdir(exist_ok=True)
+        (project.build / "art" / "icon.png").write_bytes(b"png")
+        before = len(calls.read_text().splitlines())
+        alia.cmd_run(project, [])
+        check(rendered and not any("art.py" in c for c in calls.read_text().splitlines()[before:])
+              and (project.build / "cart-pc" / "icon.png").read_bytes() == b"png",
+              "run: the cart art rendered once, then copied from build/art/")
     finally:
         alia.ACART, alia.engine_files = saved
     cart = project.build / "cart-pc"
@@ -68,6 +82,11 @@ import alia_engine  # noqa: E402  (PYTHONPATH: the build)
 pyproject = (REPO / "pyproject.toml").read_text()
 check(alia.VERSION == alia_engine.__version__ and f'version = "{alia.VERSION}"' in pyproject,
       f"one version everywhere: CMakeLists.txt, the module, pyproject.toml ({alia.VERSION})")
+import re  # noqa: E402
+calls_text = [m.group(0) for f in ("alia.py", "alia_plugin.py")
+              for m in re.finditer(r"\.(write_text|read_text)\((?:[^()]|\([^()]*\))*\)", (REPO / "tools" / f).read_text())]
+check(calls_text and all("encoding=" in c for c in calls_text),
+      "the tool reads and writes text as UTF-8, never the system's encoding (cp1252, GBK on Windows)")
 try:
     alia.Project.find(Path("/"))
     check(False, "outside a project: an error")

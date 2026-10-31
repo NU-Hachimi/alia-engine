@@ -11,7 +11,7 @@
 - 要上板子的话：`adb`（Android platform-tools）。打包卡带也在运行时镜像里做，电脑上不用装别的。
 
 ```sh
-python3 -m venv ~/.alia && . ~/.alia/bin/activate            # Windows：py -m venv %USERPROFILE%\.alia，再 %USERPROFILE%\.alia\Scripts\activate
+python3 -m venv ~/.alia && . ~/.alia/bin/activate            # Windows：py -3.13 -m venv %USERPROFILE%\.alia，再 %USERPROFILE%\.alia\Scripts\activate
 pip install https://github.com/NU-Hachimi/alia-engine/releases/download/v0.3.1/alia_engine-0.3.1-py3-none-any.whl
 alia setup
 ```
