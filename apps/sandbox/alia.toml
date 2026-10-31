@@ -1,0 +1,6 @@
+# The engine sandbox: one exhibit per feature (src/main.py). An alia-engine project (docs/project.md).
+[game]
+name = "sandbox"
+
+[engine]
+version = ">=0.1, <1"

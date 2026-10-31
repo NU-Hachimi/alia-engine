@@ -1,0 +1,21 @@
+# The engine sandbox as a cart, so the system runs it like any game: `tools/alia.py cart` in apps/sandbox/
+# (docs/project.md).
+[cart]
+id        = "pad.alia.engine.sandbox"
+title     = "Engine Sandbox"
+version   = "0.2.0"
+publisher = "Alia Pad (dev cart)"
+description = "alia-engine sandbox: one exhibit per engine feature (materials, fog, lights, HUD), a free camera and live stats."
+
+[locale.zh]
+title = "引擎沙盒"
+
+[runtime]
+type  = "python"
+entry = "main.py"
+
+[display]
+render = "640x360"
+
+[input]
+uses = ["gamepad"]

@@ -1,0 +1,25 @@
+# Wisp Keeper, alia-engine's sample game, as a cart: `tools/alia.py cart` in apps/sample/ (docs/project.md).
+[cart]
+id          = "pad.alia.engine.sample"
+title       = "Wisp Keeper"
+version     = "0.1.0"
+publisher   = "Alia Pad (sample)"
+description = "alia-engine's sample game: catch the wisps drifting over a dusk meadow within 60 seconds. Left stick walks, right stick turns, B casts the beam."
+
+[locale.zh]
+title       = "捕光"
+description = "alia-engine 的示例游戏：黄昏的草地上飘着光点，60 秒内用光束尽量多地捉住它们。左摇杆走路，右摇杆转视角，B 放光束。"
+
+[runtime]
+type  = "python"
+entry = "main.py"
+
+[display]
+render = "640x360"
+
+[input]
+uses    = ["gamepad"]
+confirm = "east"
+
+[save]
+quota_kb = 16

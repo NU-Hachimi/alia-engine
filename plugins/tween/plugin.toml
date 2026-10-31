@@ -1,0 +1,9 @@
+# An alia-engine plugin (docs/plugins.md): a Python package a game copies into its cart with
+#   tools/alia_plugin.py add plugins/tween <cart stage>
+[plugin]
+name        = "tween"
+package     = "alia_tween"          # the directory copied to content/python/
+version     = "0.1.0"
+engine      = ">=0.1, <1"           # alia-engine versions it works with
+description = "Tweens: ease any attribute (node position, e.frame's sky, the game's own) to a value over time; sequences, loops, callbacks."
+license     = "MIT"

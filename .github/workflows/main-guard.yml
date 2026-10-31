@@ -1,0 +1,52 @@
+# main takes changes through pull requests; only the owner pushes to it directly. This notices instead of
+# blocking (private repositories on GitHub's free plan have no branch protection): a push to main
+# that isn't a merged pull request, by someone not in OWNERS, opens an issue assigned to the owner and fails this
+# check. Set REVERT to "true" to also revert such a push. A public repository can also use branch protection.
+name: main guard
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # only used when REVERT is "true"
+  issues: write
+
+env:
+  OWNERS: SaltyfishAlpha   # space-separated GitHub logins that may push to main directly
+  REVERT: "false"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Was this push a merged pull request, or the owner's?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          for o in $OWNERS; do
+            if [ "$ACTOR" = "$o" ]; then echo "pushed by $ACTOR: fine"; exit 0; fi
+          done
+          # merge, squash or rebase: GitHub links the commit to its merged pull request
+          pr=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '[.[] | select(.merged_at != null)][0].number // empty')
+          if [ -n "$pr" ]; then echo "pull request #$pr: fine"; exit 0; fi
+          owner=${OWNERS%% *}
+          body="$ACTOR pushed directly to main: ${BEFORE:0:7}..${SHA:0:7} (https://github.com/$REPO/compare/$BEFORE...$SHA). main takes changes through pull requests (.github/workflows/main-guard.yml)."
+          gh issue create --repo "$REPO" --title "Direct push to main by $ACTOR (${SHA:0:7})" \
+            --body "$body" --assignee "$owner" || echo "could not open the issue"
+          if [ "$REVERT" = "true" ]; then
+            git clone --quiet "https://x-access-token:$GH_TOKEN@github.com/$REPO.git" repo
+            cd repo
+            git config user.name "main guard"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git revert --no-edit "$BEFORE..$SHA"
+            git push origin HEAD:main
+          fi
+          echo "::error::direct push to main by $ACTOR, not through a pull request"
+          exit 1
