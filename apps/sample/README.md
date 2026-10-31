@@ -9,7 +9,7 @@ cd apps/sample
 ../../tools/alia.py cart && ../../tools/alia.py install && ../../tools/alia.py launch   # 作为卡带在板子上跑
 ```
 
-操作：左摇杆走路，右摇杆转视角，B（South）放光束，A（East）开始，Start 暂停。键盘用 Alia Pad 平台的键位（devkit 的键位表，`docs/api.md` §1）。
+操作：左摇杆走路，右摇杆转视角，B（South）放光束，A（East）开始，Start 暂停。键盘用 Alia Pad 平台的键位（devkit 的 `docs/tools.md` §2「键盘」）。
 
 ## 它是怎么组织的
 
