@@ -4,10 +4,10 @@
 
 ## 1. 准备（一次）
 
-游戏总是在 **Alia Pad 的模拟器**里运行：devkit 的 `acart run` 在 Docker 里起一个和掌机一样的系统（同样的 Python 3.13、库、沙箱、手柄和平台规则），引擎随卡带装进去。所以电脑上只需要：
+游戏、测试和工具都在 **Alia Pad 的运行时镜像**里运行：devkit 的 `acart` 在 Docker 里起一个和掌机一样的系统（同样的 Python 3.13、库、沙箱、手柄和平台规则），引擎随卡带装进去。所以电脑上只需要：
 
 - **Docker**：Linux 上是 Docker Engine（或 Podman），Windows、macOS 上是 Docker Desktop。
-- **Python 3.12 或更新**（只用来运行 `alia` 和 `acart` 这两个命令行工具；游戏不在它里面跑）。
+- **Python 3.12 或更新**（只用来运行 `alia` 和 `acart` 这两个命令行工具；游戏、测试都不在它里面跑）。
 - 要上板子的话：`adb`（Android platform-tools），和打包用的 `mksquashfs`（Linux：`sudo apt install squashfs-tools`）。
 
 ```sh
@@ -20,14 +20,13 @@ alia setup
 
 各个系统现在的情况：
 
-| | `alia run`（模拟器） | `alia test`、`alia exec` | `alia cart`、上板子 |
+| | `alia run`（模拟器） | `alia test`、`alia exec`（无头） | `alia cart`、上板子 |
 |---|---|---|---|
-| Linux x86_64 | ✅ 有 Wayland 桌面时开窗口，否则在浏览器里 | ✅ | ✅ |
-| Windows | 还不行：Docker Desktop 的虚拟机里没有 `/dev/uinput`，devkit 正在改 | 在 WSL2 里 | 打包要 `mksquashfs`：在 WSL2 里 |
-| macOS | 多半和 Windows 一样卡在 `/dev/uinput`（还没测）；能跑时在浏览器里，软件渲染 | 还不行 | 打包要 `mksquashfs`（Homebrew：`brew install squashfs`） |
-| WSL2（Debian 13） | 同 Linux | ✅ | ✅（USB 用 `usbipd-win` 接进 WSL） |
+| Linux | ✅ 有 Wayland 桌面时开窗口，否则在浏览器里 | ✅ | ✅ |
+| Windows | 还不行：Docker Desktop 的虚拟机里没有 `/dev/uinput`，devkit 正在改 | ✅ | 打包要 `mksquashfs`：在 WSL2 里 |
+| macOS | 多半和 Windows 一样卡在 `/dev/uinput`（还没测）；能跑时在浏览器里，软件渲染 | ✅（软件渲染） | 打包要 `mksquashfs`（Homebrew：`brew install squashfs`） |
 
-`alia test` 和 `alia exec` 暂时还在电脑上直接运行无头引擎，只有 Linux x86_64 行，并且要系统里有 Python 3.13、SDL3（3.2 或更新）和 EGL / GLES（Debian 13：`sudo apt install python3-venv libsdl3-0 libegl1 libgles2`）。它们以后也搬进模拟器的镜像，到时候这一段就不需要了。
+在 Windows 上也可以全在 WSL2（Debian 13）里做，和 Linux 一样；USB 用 `usbipd-win` 接进 WSL。
 
 **板子**：刷好 Alia Pad 的开发镜像，开 adb，用 USB 连上电脑（`adb devices` 能看到它）。
 
@@ -36,8 +35,7 @@ alia setup
 ```sh
 alia new mygame && cd mygame
 alia run                  # 在模拟器里玩（键盘按 Alia Pad 平台的键位：devkit 的 docs/tools.md §2「键盘」）
-python3.13 -m venv .venv && .venv/bin/pip install pytest   # 项目自己的测试环境，alia test 会用它
-alia test                 # 测试，在无头引擎里跑
+alia test                 # 测试（pytest），在镜像里的无头引擎里跑
 git init && git add -A && git commit -m "mygame"
 ```
 
@@ -45,6 +43,7 @@ git init && git add -A && git commit -m "mygame"
 
 - **编辑器的补全和类型检查**：`alia new` 顺便写了 `pyrightconfig.json`，VS Code（Pylance）、pyright 这类编辑器读它，就认得 `alia_engine`（随引擎附带的 `alia_engine.pyi`：每个类、函数的参数和说明）、`alia_kit` 和你自己的模块。先 `alia setup --editor` 一次，让 `build/dev/` 有引擎（已有的项目也用它加上配置）。
 - 改了 `src/` 的代码直接 `alia run`：每次都会把项目复制成 PC 版的卡带（`build/cart-pc/`）交给模拟器，没有编译这一步，很快。
+- 项目自己的工具（截图、回归快照、生成资产……）用 `alia exec tools/x.py`：在同一个镜像里跑，能 `import` 游戏的模块和引擎，项目目录可写（镜像里是 `/work`）。镜像里有 pytest 和 pyflakes。
 - 资产（`.apak` 资源包、`.wav`、`.json`）放 `assets/`，游戏从 `content/assets/` 读（`docs/project.md` §1）。资源包可以在代码里生成（`alia_pack`），也可以由项目的 `pipeline/` 做好提交进来。
 - 用插件：在 `alia.toml` 的 `[engine] plugins` 里写上（`docs/plugins.md`）。
 

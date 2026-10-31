@@ -1,6 +1,7 @@
 """tools/alia.py (docs/project.md): a new project runs and tests; a project's layout carries its plugins."""
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,9 +42,16 @@ with tempfile.TemporaryDirectory() as tmp:
     fake.chmod(0o755)
     saved = alia.ACART, alia.engine_files
     alia.ACART = str(fake)
-    alia.engine_files = lambda target: (content / "python", REPO / "plugins")
+    engine = Path(tmp) / "engine"
+    shutil.copytree(content / "python", engine)
+    alia.engine_files = lambda target: (engine, REPO / "plugins")
     try:
         alia.cmd_run(project, ["--frames", "5"])
+        alia.cmd_test(project, ["-k", "runs"])
+        check(f"exec --env PYTHONPATH=/work/build/dev/content:/work/build/dev/content/python {root} -- pytest -q "
+              "/work/tests -k runs" in calls.read_text().splitlines()
+              and os.readlink(project.build / "dev" / "content" / "main.py") == "../../../src/main.py",
+              "test: pytest in the image (acart exec), the project at /work, the layout linked relatively")
     finally:
         alia.ACART, alia.engine_files = saved
     cart = project.build / "cart-pc"

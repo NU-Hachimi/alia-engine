@@ -6,6 +6,7 @@
 cd apps/sample
 ../../tools/alia.py run                                          # 在模拟器里玩（键盘或手柄）
 ../../tools/alia.py run --demo                                   # 自动演示
+../../tools/alia.py exec build/dev/content/main.py --demo --headless --frames 600 --screenshot /work/build/shot.png
 ../../tools/alia.py cart && ../../tools/alia.py install && ../../tools/alia.py launch   # 作为卡带在板子上跑
 ```
 
