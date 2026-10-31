@@ -503,6 +503,8 @@ def main(argv=None):
     except Fail as err:
         print(f"alia: {err}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:  # Ctrl-C: the game (or the simulator) has its own say; no traceback from here
+        return 130
     return 0
 
 
