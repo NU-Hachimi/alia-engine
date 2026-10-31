@@ -12,7 +12,7 @@
 
 ```sh
 python3 -m venv ~/.alia && . ~/.alia/bin/activate            # Windows：py -3.13 -m venv %USERPROFILE%\.alia，再 %USERPROFILE%\.alia\Scripts\activate
-pip install https://github.com/NU-Hachimi/alia-engine/releases/download/v0.3.1/alia_engine-0.3.1-py3-none-any.whl
+pip install https://github.com/NU-Hachimi/alia-engine/releases/download/v0.3.2/alia_engine-0.3.2-py3-none-any.whl
 alia setup
 ```
 

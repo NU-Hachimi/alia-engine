@@ -1,6 +1,6 @@
 # alia-engine：游戏 API
 
-> **v0.3.1**（2026-10-31）。v0.3 的接口和 v0.2 一样，变的是平台：PC 上的键位和声音的输出规则来自 Alia Pad 的 SDK（alia-sdk 0.2，§7）；游戏、测试和工具都在 Alia Pad 的运行时镜像里运行（0.3.1：`alia run` 就是模拟器，`alia test`、`alia exec` 也在镜像里，不再直接在电脑上运行，电脑上只要 Docker），随引擎附带 `alia_engine.pyi`（编辑器的补全）。v0.2 在 v0.1.0（E4 定稿）之上只加不改：`alia_kit` 的形状、地面、光、数值、角度、向量和噪声（§7.1），插件（`docs/plugins.md`），游戏项目的布局和 `alia` 工具（`docs/project.md`、`docs/getting-started.md`）。从 §0 快速开始读起；接口在 §1–§7，还没有的在 §8，定下来的决定在 §9。
+> **v0.3.2**（2026-10-31；0.3.2 修了 Windows 上的问题：新项目的文件总是 UTF-8，`alia run` 带上卡带美术）。v0.3 的接口和 v0.2 一样，变的是平台：PC 上的键位和声音的输出规则来自 Alia Pad 的 SDK（alia-sdk 0.2，§7）；游戏、测试和工具都在 Alia Pad 的运行时镜像里运行（从 0.3.1 起：`alia run` 就是模拟器，`alia test`、`alia exec` 也在镜像里，不再直接在电脑上运行，电脑上只要 Docker），随引擎附带 `alia_engine.pyi`（编辑器的补全）。v0.2 在 v0.1.0（E4 定稿）之上只加不改：`alia_kit` 的形状、地面、光、数值、角度、向量和噪声（§7.1），插件（`docs/plugins.md`），游戏项目的布局和 `alia` 工具（`docs/project.md`、`docs/getting-started.md`）。从 §0 快速开始读起；接口在 §1–§7，还没有的在 §8，定下来的决定在 §9。
 > 从 v0.1.0 起接口保持兼容：只加不改；要改的先在这里标"将要变"，下一个次版本再变（`alia_engine.__version__`）。
 > Python 模块 `alia_engine`（下面写作 `ae`），C++ 有同样的一套（`src/runtime/`、`src/world/`、`src/audio/`）。
 > 分层和分工见 `architecture.md` §2、§2.1；资源格式见 `formats.md`；性能预算见 `architecture.md` §6.2；
