@@ -23,8 +23,8 @@ alia setup
 | | `alia run`（模拟器） | `alia test`、`alia exec`（无头） | `alia cart`、上板子 |
 |---|---|---|---|
 | Linux | ✅ 有 Wayland 桌面时开窗口，否则在浏览器里 | ✅ | ✅ |
-| Windows | 还不行：Docker Desktop 的虚拟机里没有 `/dev/uinput`，devkit 正在改 | ✅ | 打包要 `mksquashfs`：在 WSL2 里 |
-| macOS | 多半和 Windows 一样卡在 `/dev/uinput`（还没测）；能跑时在浏览器里，软件渲染 | ✅（软件渲染） | 打包要 `mksquashfs`（Homebrew：`brew install squashfs`） |
+| Windows | 在浏览器里（Docker Desktop 没有 `/dev/uinput`，镜像在用户态模拟同一个手柄；还在真机上验证） | ✅ | 打包要 `mksquashfs`：在 WSL2 里 |
+| macOS | 在浏览器里，软件渲染（手柄同 Windows；还在真机上验证） | ✅（软件渲染） | 打包要 `mksquashfs`（Homebrew：`brew install squashfs`） |
 
 在 Windows 上也可以全在 WSL2（Debian 13）里做，和 Linux 一样；USB 用 `usbipd-win` 接进 WSL。
 
