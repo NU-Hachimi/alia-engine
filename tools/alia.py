@@ -175,11 +175,30 @@ def fetch(target):
     return cache
 
 
+def build_engine_debian():
+    """The PC module for carts, from a checkout: built in the release's Debian 13 container (tools/release/Dockerfile,
+    the platform's baseline), since a module built on a newer host (e.g. Arch's glibc) can't load in the simulator
+    or on another PC. Direct runs and tests keep using the fast local build."""
+    image = "alia-engine-build:trixie"
+    run(["docker", "build", "-q", "-t", image, SOURCE / "tools" / "release"], stdout=subprocess.DEVNULL)
+    out = "build-release/x86_64"
+    script = (f"[ -f {out}/build.ninja ] || cmake -S . -B {out} -G Ninja -DCMAKE_BUILD_TYPE=Release -DALIA_BUILD_TESTS=OFF "
+              f"-DALIA_BUILD_APPS=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ > /dev/null && "
+              f"cmake --build {out} --target alia_engine > /dev/null && rm -rf {out}/alia-stage && "
+              f"cmake --install {out} --prefix {out}/alia-stage > /dev/null")  # paths are the container's
+    run(["docker", "run", "--rm", "-u", f"{os.getuid()}:{os.getgid()}", "-v", f"{SOURCE}:/src", "-w", "/src", image,
+         "sh", "-c", script])
+    return SOURCE / out / "alia-stage" / "python"
+
+
 def engine_files(target):
-    """(python/ with alia_engine, alia_kit and alia_pack, the first-party plugins/) for the PC or the board."""
+    """(python/ with alia_engine, alia_kit and alia_pack, the first-party plugins/) for "pc" (direct runs), "pc-cart"
+    (a PC cart: the simulator) or "board"."""
     if not SOURCE:
-        cache = fetch(target)
+        cache = fetch("pc" if target == "pc-cart" else target)  # release builds are Debian-built already
         return cache / "python", cache / "plugins"
+    if target == "pc-cart":
+        return build_engine_debian(), SOURCE / "plugins"
     out = build_engine(target)
     stage = out / "alia-stage"
     if stage.exists():
@@ -323,11 +342,11 @@ def cmd_cart(project, pc=False):
         _place(path, out / path.name, link=False)
     if not (out / "cart.toml").is_file():
         raise Fail(f"{project.cart_dir}/cart.toml: missing")
-    lay_out(project, out, "pc" if pc else "board")
+    lay_out(project, out, "pc-cart" if pc else "board")
     if project.art:  # rendered with the PC engine, headless, from the real game
         run([python_for(project), project.art, out], cwd=project.root, env=dev_env(project))
-    run([ACART, "check", out])
-    if not pc:
+    if not pc:  # acart check is the board's (an x86_64 module fails it); the simulator checks PC carts itself
+        run([ACART, "check", out])
         run([ACART, "pack", out, "-o", project.build / f"{project.name}.acart"])
     print(f"cart: {out}")
     return out
