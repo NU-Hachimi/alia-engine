@@ -124,7 +124,7 @@ target_link_libraries(alia_world PUBLIC alia_render alia_asset alia_entt alia_gl
 add_library(alia_runtime STATIC
   src/runtime/actions.cpp
   src/runtime/app.cpp
-  src/runtime/camera.cpp
+  src/runtime/lens.cpp
   src/runtime/engine.cpp
   src/runtime/locale.cpp
   src/runtime/saves.cpp)
@@ -133,7 +133,7 @@ target_compile_options(alia_runtime PRIVATE ${ALIA_WARNINGS})
 # include/alia), warn when the copy differs from it.
 target_include_directories(alia_runtime PRIVATE third_party/alia-sdk ${CMAKE_CURRENT_BINARY_DIR}/generated)
 # The SDK's reference camera shader (third_party/alia-sdk/camera/alia_camera.glsl), as a C++ string for the
-# camera's developing pass (src/runtime/camera.cpp).
+# camera's developing pass (src/runtime/lens.cpp).
 file(READ third_party/alia-sdk/camera/alia_camera.glsl ALIA_CAMERA_GLSL)
 file(CONFIGURE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/alia_camera_glsl.inc
      CONTENT "R\"glsl(\n@ALIA_CAMERA_GLSL@)glsl\"\n" @ONLY)
@@ -256,8 +256,8 @@ if(ALIA_BUILD_TESTS)
     add_test(NAME camera_app COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/apps/camera/src/main.py --headless --frames 30)
     set_tests_properties(camera_app PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>;ALIA_CAMERA_SOCKET=/nonexistent")
     # The camera against a fake camera service (protocol v2), headless.
-    add_test(NAME camera COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_camera.py)
-    set_tests_properties(camera PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
+    add_test(NAME lens COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_lens.py)
+    set_tests_properties(lens PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     add_test(NAME textures COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_textures.py)
     set_tests_properties(textures PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     add_test(NAME kit COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_kit.py)

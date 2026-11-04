@@ -80,7 +80,7 @@ void Engine::close() {
     if (dev_) {
         for (auto& [id, t] : textures_)
             if (t.handle) dev_->destroy(t.handle);
-        camera_.shutdown(*dev_);
+        lens_.shutdown(*dev_);
         pipeline_.shutdown(*dev_);
         if (out_target_) dev_->destroy(out_target_);
         if (out_tex_) dev_->destroy(out_tex_);
@@ -111,7 +111,7 @@ bool Engine::poll(bool carry_pressed) {
     const uint32_t carried = carry_pressed ? input_.pressed : 0;
     input_ = surface_->input();
     input_.pressed |= carried;
-    camera_.update(*dev_);
+    lens_.update(*dev_);
     for (auto& [id, t] : textures_) {  // background decodes that are done: onto the GPU
         if (!t.pending.valid() || t.pending.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
         auto [img, err] = t.pending.get();
@@ -239,24 +239,24 @@ void Engine::push_image(render::HudCmd c, rhi::TextureH tex, int tw, int th, boo
     hud_.push_back(std::move(c));
 }
 
-void Engine::hud_camera(float x, float y, float w, float h, bool fit, uint32_t color) {
-    if (!camera_.image()) {  // no image yet: a black box of the same size
+void Engine::hud_lens(float x, float y, float w, float h, bool fit, uint32_t color) {
+    if (!lens_.image()) {  // no image yet: a black box of the same size
         hud_rect(x, y, w, h, 0x000000FFu & (color | 0xFFFFFF00u));
         return;
     }
     render::HudCmd c{render::HudCmd::Image, x, y, w, h, color, 0, {}};
-    push_image(std::move(c), camera_.image(), camera_.image_width(), camera_.image_height(), true, fit);
+    push_image(std::move(c), lens_.image(), lens_.image_width(), lens_.image_height(), true, fit);
 }
 
 void Engine::hud_image(uint32_t id, float x, float y, float w, float h, bool fit, uint32_t color, std::array<float, 4> src) {
-    if (id == kCameraTexture) {
-        if (src == std::array<float, 4>{0, 0, 1, 1}) return hud_camera(x, y, w, h, fit, color);
-        if (!camera_.image()) return;
+    if (id == kLensTexture) {
+        if (src == std::array<float, 4>{0, 0, 1, 1}) return hud_lens(x, y, w, h, fit, color);
+        if (!lens_.image()) return;
     }
     render::HudCmd c{render::HudCmd::Image, x, y, w, h, color, 0, {}};
     c.u0 = src[0], c.v0 = src[1], c.u1 = src[2], c.v1 = src[3];
-    if (id == kCameraTexture)
-        return push_image(std::move(c), camera_.image(), camera_.image_width(), camera_.image_height(), true, fit);
+    if (id == kLensTexture)
+        return push_image(std::move(c), lens_.image(), lens_.image_width(), lens_.image_height(), true, fit);
     auto it = textures_.find(id);
     if (it == textures_.end() || !it->second.handle) return;
     const TextureInfo& i = it->second.info;
@@ -367,7 +367,7 @@ const Engine::TextureInfo* Engine::texture_info(uint32_t id) const {
 void Engine::end_frame() {
     const double t0 = now_ms();
     world_.collect(alpha_, instances_, frame_);
-    pipeline_.set_camera_image(camera_.image(), camera_.image_width(), camera_.image_height());
+    pipeline_.set_lens_image(lens_.image(), lens_.image_width(), lens_.image_height());
     pipeline_.render(*dev_, frame_, instances_, hud_);
     const bool window = surface_->has_default_framebuffer();
     const int ow = window ? surface_->width() : cfg_.width, oh = window ? surface_->height() : cfg_.height;

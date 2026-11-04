@@ -122,7 +122,7 @@ with tempfile.TemporaryDirectory() as tmp:
     j.destroy()
     p = shot(lambda: e.hud_image(j, 0, 0, 64, 32))
     check(pixel(p, 10, 16) == (0, 0, 0) and j.error == "destroyed", "destroyed: nothing drawn")
-    ct = e.camera.texture
+    ct = e.lens.texture
     check(not ct.ready and ct.width == 0, "the camera's texture: not ready without a camera")
     e.close()
     del e, j, t, c, big, a, bad, ct

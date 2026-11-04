@@ -1,12 +1,12 @@
 # 相机
 
-游戏用掌机的相机：相机画面当背景（AR 的第一级），在 HUD 里画取景框，拍照。相机的帧和参数来自 Alia Pad 卡带 SDK 的相机接口
+游戏用掌机的相机（接口叫 `e.lens`，和看场景的视角 `e.world.camera` 区分开）：相机画面当背景（AR 的第一级），在 HUD 里画取景框，拍照。相机的帧和参数来自 Alia Pad 卡带 SDK 的相机接口
 （`alia/camera.h`，协议 v2，见 Alia Pad 的卡带文档；引擎带了一份在 `third_party/alia-sdk/`）；引擎负责把原始帧变成画面，游戏只看到下面这些。
 
 ## 接口
 
 ```python
-cam = e.camera                      # Engine.camera（DeviceCamera）；不是 e.world.camera（那是看场景的视角）
+cam = e.lens                      # Engine.lens（类型 Lens）；不是 e.world.camera（那是看场景的视角）
 cam.open()                          # 要相机：默认是场景尺寸（e.scene_size）、全视野
 cam.open(1280, 720, full_fov=False) # 或者自己给尺寸；可以中心裁切（视野窄，更省）
 cam.close()                         # 不用了就关（传感器断电）
@@ -20,15 +20,15 @@ cam.mode        # 拿到的传感器模式：width、height、fps、turn、order
 cam.zero_copy   # True：GPU 直接读相机的缓冲区（掌机上）；False：每帧复制一次（有的模拟环境）
 cam.texture     # 相机画面当纹理（docs/textures.md）：e.hud_image(cam.texture, ...)；以后材质也能用
 
-e.frame.camera_background = "cover"   # 天空的位置画相机画面，填满、多出的裁掉；"fit"：完整显示，留黑边；"off"（默认）
-e.hud_camera(x, y, w, h)              # HUD 里画相机画面（取景框），场景像素：裁掉多出的部分填满这个框
-e.hud_camera(x, y, w, h, fit=True, color=0xFFFFFF80)   # 完整显示、在框里居中；color 乘在画面上（这里半透明）
+e.frame.lens_background = "cover"   # 天空的位置画相机画面，填满、多出的裁掉；"fit"：完整显示，留黑边；"off"（默认）
+e.hud_lens(x, y, w, h)              # HUD 里画相机画面（取景框），场景像素：裁掉多出的部分填满这个框
+e.hud_lens(x, y, w, h, fit=True, color=0xFFFFFF80)   # 完整显示、在框里居中；color 乘在画面上（这里半透明）
 
 shot = cam.photo()      # 拍照，异步：shot.done，然后 shot.jpeg（bytes）或 shot.error
 # 之后某一步：if shot.done and shot.jpeg: ae.save.write("photo-1.jpg", shot.jpeg)
 ```
 
-`hud_camera` 和 `hud_rect`、`hud_text` 一样按调用顺序画，可以在上面再画框线、文字、准星。背景画在 3D 场景后面，3D 物体照常画在上面（相机画面上叠游戏物体）。
+`hud_lens` 和 `hud_rect`、`hud_text` 一样按调用顺序画，可以在上面再画框线、文字、准星。背景画在 3D 场景后面，3D 物体照常画在上面（相机画面上叠游戏物体）。
 
 ## 行为
 
@@ -61,5 +61,5 @@ shot = cam.photo()      # 拍照，异步：shot.done，然后 shot.jpeg（bytes
 
 ## 测试
 
-`tests/test_camera.py`：一个假的相机服务（同一个协议，测试图案），引擎无头跑：问用户、显影的颜色和方向（含 90° 安装）、背景（cover / fit）、
+`tests/test_lens.py`：一个假的相机服务（同一个协议，测试图案），引擎无头跑：问用户、显影的颜色和方向（含 90° 安装）、背景（cover / fit）、
 取景框、缓冲区归还、拍照（暂停、新模式、恢复）、拒绝、中途关掉权限、没有服务。电脑上帧是复制的；不复制的导入在掌机上验证。

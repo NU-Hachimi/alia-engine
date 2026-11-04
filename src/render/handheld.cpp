@@ -150,7 +150,7 @@ void main() { o_color = u_color; }
 
 // The camera's image behind the scene: q (0..1 over the scene, top-left origin) * scale + offset is
 // where in the image; outside it, black (Fit's bars).
-const char* kCameraBgFs = R"(#version 300 es
+const char* kLensBgFs = R"(#version 300 es
 precision highp float;
 layout(std140) uniform Params { vec4 u_map; vec4 u_scene; };  // xy: scale, zw: offset; u_scene.xy: scene size
 uniform sampler2D u_tex0;
@@ -317,10 +317,10 @@ bool HandheldPipeline::init(rhi::Device& dev, int width, int height, std::string
 
     rhi::PipelineDesc camera_bg;
     camera_bg.vertex_source = FULLSCREEN_VS;
-    camera_bg.fragment_source = kCameraBgFs;
-    camera_bg.name = "camera-background";
-    if (hud_image_) camera_bg_ = dev.create_pipeline(camera_bg, error);
-    return bool(camera_bg_);
+    camera_bg.fragment_source = kLensBgFs;
+    camera_bg.name = "lens-background";
+    if (hud_image_) lens_bg_ = dev.create_pipeline(camera_bg, error);
+    return bool(lens_bg_);
 }
 
 void HandheldPipeline::shutdown(rhi::Device& dev) {
@@ -330,9 +330,9 @@ void HandheldPipeline::shutdown(rhi::Device& dev) {
     if (hud_vb_) dev.destroy(hud_vb_);
     if (instance_vb_) dev.destroy(instance_vb_);
     for (rhi::PipelineH p : {sky_, mesh_, mesh_two_sided_, blend_, blend_two_sided_, overlay_, hud_, instanced_,
-                             instanced_two_sided_, camera_bg_, hud_image_})
+                             instanced_two_sided_, lens_bg_, hud_image_})
         if (p) dev.destroy(p);
-    camera_ = {};
+    lens_ = {};
     if (target_) dev.destroy(target_);
     for (rhi::TextureH t : {color_, depth_, palette_, font_})
         if (t) dev.destroy(t);
@@ -524,19 +524,19 @@ void HandheldPipeline::render(rhi::Device& dev, const FrameDesc& f, std::span<co
     pass.name = "scene";
     dev.begin_pass(pass);
 
-    if (f.camera_background != CameraBackground::Off) {
+    if (f.lens_background != LensBackground::Off) {
         // The image's size on the scene: Cover the smallest that fills it, Fit the largest that fits.
         float map[8] = {1, 1, -2, -2, float(w_), float(h_), 0, 0};  // no image: all outside, black
-        if (camera_ && camera_w_ > 0 && camera_h_ > 0) {
-            const float sx = float(w_) / float(camera_w_), sy = float(h_) / float(camera_h_);
-            const float s = f.camera_background == CameraBackground::Cover ? std::max(sx, sy) : std::min(sx, sy);
-            map[0] = float(w_) / (float(camera_w_) * s);
-            map[1] = float(h_) / (float(camera_h_) * s);
+        if (lens_ && lens_w_ > 0 && lens_h_ > 0) {
+            const float sx = float(w_) / float(lens_w_), sy = float(h_) / float(lens_h_);
+            const float s = f.lens_background == LensBackground::Cover ? std::max(sx, sy) : std::min(sx, sy);
+            map[0] = float(w_) / (float(lens_w_) * s);
+            map[1] = float(h_) / (float(lens_h_) * s);
             map[2] = (1 - map[0]) / 2;
             map[3] = (1 - map[1]) / 2;
         }
-        dev.set_pipeline(camera_bg_);
-        if (camera_) dev.set_texture(0, camera_, rhi::Filter::Linear);
+        dev.set_pipeline(lens_bg_);
+        if (lens_) dev.set_texture(0, lens_, rhi::Filter::Linear);
         else dev.set_texture(0, palette_);  // anything: nothing is sampled
         dev.set_uniforms(map, sizeof map);
         dev.draw(3);

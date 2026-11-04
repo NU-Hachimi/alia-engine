@@ -1,4 +1,4 @@
-// The handheld's camera for games (docs/camera.md): the Alia Pad cart SDK's camera client
+// The handheld's camera for games, e.lens (docs/camera.md; not the view into the scene, World's camera): the Alia Pad cart SDK's camera client
 // (third_party/alia-sdk/alia/camera.h), and the engine's side of it: raw Bayer frames imported as
 // textures (dmabuf, or a copy where that can't be done), developed on the GPU with the SDK's reference
 // shader into one RGBA image the scene and the HUD draw from, the buffers handed back once the GPU is
@@ -17,7 +17,7 @@
 
 namespace alia::runtime {
 
-class Camera {
+class Lens {
 public:
     enum class State { Closed, Starting, Pending, Running, Paused, Denied, Revoked, Busy, Unavailable, Suspended, Failed };
     static const char* name(State s);
@@ -41,10 +41,10 @@ public:
         std::string error;          // done and no jpeg: why
     };
 
-    Camera();
-    ~Camera();
-    Camera(const Camera&) = delete;
-    Camera& operator=(const Camera&) = delete;
+    Lens();
+    ~Lens();
+    Lens(const Lens&) = delete;
+    Lens& operator=(const Lens&) = delete;
 
     // Ask for the camera: the size the game draws it at (the image is that big or a bit bigger, in the
     // camera's own aspect), full_fov false allows a centre crop. Never blocks; state() says how it goes.

@@ -1,4 +1,4 @@
-#include "runtime/camera.hpp"
+#include "runtime/lens.hpp"
 
 #include <sys/mman.h>
 #include <unistd.h>
@@ -61,25 +61,25 @@ struct DevelopParams {
     float ccm[3][4];
 };
 
-Camera::State state_of(uint32_t code) {
+Lens::State state_of(uint32_t code) {
     switch (code) {
-    case CAM_ERR_DENIED: return Camera::State::Denied;
-    case CAM_ERR_REVOKED: return Camera::State::Revoked;
-    case CAM_ERR_BUSY: return Camera::State::Busy;
-    case CAM_ERR_UNAVAILABLE: return Camera::State::Unavailable;
-    case CAM_ERR_SUSPENDED: return Camera::State::Suspended;
-    default: return Camera::State::Failed;
+    case CAM_ERR_DENIED: return Lens::State::Denied;
+    case CAM_ERR_REVOKED: return Lens::State::Revoked;
+    case CAM_ERR_BUSY: return Lens::State::Busy;
+    case CAM_ERR_UNAVAILABLE: return Lens::State::Unavailable;
+    case CAM_ERR_SUSPENDED: return Lens::State::Suspended;
+    default: return Lens::State::Failed;
     }
 }
 
 }  // namespace
 
-struct Camera::Impl {
+struct Lens::Impl {
     alia_camera c;
     bool connected = false;
 };
 
-const char* Camera::name(State s) {
+const char* Lens::name(State s) {
     switch (s) {
     case State::Closed: return "closed";
     case State::Starting: return "starting";
@@ -96,12 +96,12 @@ const char* Camera::name(State s) {
     return "?";
 }
 
-Camera::Camera() : impl_(std::make_unique<Impl>()) {}
-Camera::~Camera() {
+Lens::Lens() : impl_(std::make_unique<Impl>()) {}
+Lens::~Lens() {
     if (impl_->connected) alia_camera_close(&impl_->c);  // GL objects went with the device
 }
 
-void Camera::open(int width, int height, bool full_fov) {
+void Lens::open(int width, int height, bool full_fov) {
     if (impl_->connected) return;  // already open (or opening): close() first to ask for another size
     want_w_ = std::max(width, 1), want_h_ = std::max(height, 1), want_full_ = full_fov;
     message_.clear();
@@ -125,7 +125,7 @@ void Camera::open(int width, int height, bool full_fov) {
     state_ = State::Starting;
 }
 
-void Camera::disconnect(rhi::Device& dev) {
+void Lens::disconnect(rhi::Device& dev) {
     for (const Held& h : held_)
         if (h.fence) dev.destroy(h.fence);
     held_.clear();
@@ -143,7 +143,7 @@ void Camera::disconnect(rhi::Device& dev) {
     if (photo_in_flight_) finish_photo(photo_in_flight_, {}, "the camera closed");
 }
 
-void Camera::close(rhi::Device& dev) {
+void Lens::close(rhi::Device& dev) {
     disconnect(dev);
     for (rhi::TextureH* t : {&out_tex_, &shade_tex_, &tone_tex_, &upload_tex_})
         if (*t) dev.destroy(*t), *t = {};
@@ -157,7 +157,7 @@ void Camera::close(rhi::Device& dev) {
     message_.clear();
 }
 
-void Camera::fail(State s, const std::string& message, rhi::Device& dev) {
+void Lens::fail(State s, const std::string& message, rhi::Device& dev) {
     disconnect(dev);
     state_ = s;
     message_ = message;
@@ -165,7 +165,7 @@ void Camera::fail(State s, const std::string& message, rhi::Device& dev) {
     ALIA_INFO("camera: %s%s%s", name(s), message.empty() ? "" : ": ", message.c_str());
 }
 
-bool Camera::rebuild(rhi::Device& dev) {
+bool Lens::rebuild(rhi::Device& dev) {
     alia_camera& c = impl_->c;
     const cam_mode& m = c.mode;
     for (const Held& h : held_)  // the client dropped its buffers: nothing to hand back
@@ -226,7 +226,7 @@ bool Camera::rebuild(rhi::Device& dev) {
 // Buffer `index` ready to develop (its BUFFER may come in a later poll than the MODE): read in place
 // when the GPU can (the handheld), otherwise mapped and copied into one texture per frame (simulators,
 // some PC drivers). The raw frame's texture, or {}.
-rhi::TextureH Camera::buffer(rhi::Device& dev, int index) {
+rhi::TextureH Lens::buffer(rhi::Device& dev, int index) {
     alia_camera& c = impl_->c;
     const cam_mode& m = c.mode;
     const size_t i = size_t(index);
@@ -260,7 +260,7 @@ rhi::TextureH Camera::buffer(rhi::Device& dev, int index) {
     return upload_tex_;
 }
 
-void Camera::develop(rhi::Device& dev, int index, uint32_t params) {
+void Lens::develop(rhi::Device& dev, int index, uint32_t params) {
     alia_camera& c = impl_->c;
     const cam_mode& m = c.mode;
     if (const cam_params* p = alia_camera_params_of(&c, &c.current); p && (!have_params_ || params != params_id_)) {
@@ -306,7 +306,7 @@ void Camera::develop(rhi::Device& dev, int index, uint32_t params) {
     have_image_ = true;
 }
 
-void Camera::update(rhi::Device& dev) {
+void Lens::update(rhi::Device& dev) {
     if (!impl_->connected) return;
     alia_camera& c = impl_->c;
     // Buffers the GPU is done with go back first, so the camera can fill them again.
@@ -353,7 +353,7 @@ void Camera::update(rhi::Device& dev) {
     state_ = c.pending ? State::Pending : c.paused ? State::Paused : have_image_ ? State::Running : State::Starting;
 }
 
-uint32_t Camera::take_photo() {
+uint32_t Lens::take_photo() {
     const uint32_t id = next_photo_++;
     // The newest few are kept (a game reads its photo within a few frames); older finished ones go.
     while (photos_.size() >= kPhotosKept) {
@@ -373,13 +373,13 @@ uint32_t Camera::take_photo() {
     return id;
 }
 
-void Camera::finish_photo(uint32_t id, std::vector<uint8_t> jpeg, std::string error) {
+void Lens::finish_photo(uint32_t id, std::vector<uint8_t> jpeg, std::string error) {
     if (id == photo_in_flight_) photo_in_flight_ = 0;
     for (auto& [pid, p] : photos_)
         if (pid == id) p = {true, std::move(jpeg), std::move(error)};
 }
 
-const Camera::Photo* Camera::photo(uint32_t id) const {
+const Lens::Photo* Lens::photo(uint32_t id) const {
     for (const auto& [pid, p] : photos_)
         if (pid == id) return &p;
     return nullptr;

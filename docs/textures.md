@@ -15,7 +15,7 @@ tex = e.load_texture_async(jpeg_bytes, max_size=1024)  # 在另一个线程解�
 tex = e.create_texture(w, h, rgba_bytes)         # 代码生成的（程序纹理、小图标）；tex.update(rgba_bytes) 换内容
 tex.width, tex.height, tex.ready, tex.done, tex.error
 tex.destroy()                                    # 不用了就放掉（显存）；之后再画它什么也不画
-e.camera.texture                                 # 相机画面也是一个纹理（每来一帧更新），可以用在下面任何地方
+e.lens.texture                                 # 相机画面也是一个纹理（每来一帧更新），可以用在下面任何地方
 e.stats["texture_kb"]                            # 所有纹理在 GPU 上占多少
 ```
 
@@ -32,7 +32,7 @@ e.hud_image(tex, x, y, w, h, fit=False, color=0xFFFFFFFF, src=None)   # src=(u0,
 ```
 
 默认裁掉多出的部分填满框，`fit=True` 完整显示、居中；`color` 乘在图上（含透明度）；PNG 的透明部分透出后面的东西。还没加载好的纹理不画。
-`hud_camera(...)` 就是 `hud_image(e.camera.texture, ...)`（没有画面时画黑框）。相册、照片预览、UI 图标、简单的精灵都靠它。
+`hud_lens(...)` 就是 `hud_image(e.lens.texture, ...)`（没有画面时画黑框）。相册、照片预览、UI 图标、简单的精灵都靠它。
 例子：`apps/camera/src/album.py`（相机测试卡带的相册：缩略图、全屏看、删除）。测试：`tests/test_textures.py`。
 
 ## 3. 带纹理的材质（T2，计划）
@@ -42,7 +42,7 @@ e.hud_image(tex, x, y, w, h, fit=False, color=0xFFFFFFFF, src=None)   # src=(u0,
   `tint` 对纹理是乘一个调色板色（把一张灰度图染成不同颜色，省纹理）。
 - **镂空**：`alpha_mode=CUTOUT`（纹理的 alpha 低于一半就不画）：树叶、栅栏、头发。不排序、照常合批，比 `BLEND` 便宜。
 - **合批**：同一个网格、同一个材质（所以同一张纹理）的实例照常一次 instanced draw；纹理多了 draw 就多，图集（第三步）把小图合成一张。
-- **相机画面贴在物体上**：材质的 `texture=e.camera.texture`（电视屏幕、魔镜）。
+- **相机画面贴在物体上**：材质的 `texture=e.lens.texture`（电视屏幕、魔镜）。
 
 ## 4. 资源包里的纹理、压缩、图集（T3，计划）
 
@@ -60,7 +60,7 @@ e.hud_image(tex, x, y, w, h, fit=False, color=0xFFFFFFFF, src=None)   # src=(u0,
 
 | 步 | 内容 | 用它的 |
 |---|---|---|
-| T1 ✅ | 纹理对象（PNG / JPEG、`create_texture`、异步加载）、`hud_image`、`e.camera.texture` | 相机测试卡带的相册、照片预览、UI 图标 |
+| T1 ✅ | 纹理对象（PNG / JPEG、`create_texture`、异步加载）、`hud_image`、`e.lens.texture` | 相机测试卡带的相册、照片预览、UI 图标 |
 | T2 | 网格 UV、`TEXTURE` 材质、`CUTOUT`、相机画面贴在物体上 | 3D 游戏的贴图、树叶、电视屏幕 |
 | T3 | 资源包里的纹理、ETC2、图集；公告板粒子 | 正式游戏的资源、E7 的 2D |
 

@@ -42,7 +42,7 @@ class Game:
         self.want_screen = False
         self.album = None
         self.rate, self.last_seq, self.last_t = 0.0, None, time.monotonic()
-        e.camera.open()
+        e.lens.open()
 
     def fixed_update(self, e, dt):
         i = e.input
@@ -55,7 +55,7 @@ class Game:
             return
         self.cube.yaw += (0.6 + i.lx * 3) * dt
         self.cube.pitch += i.ly * 3 * dt
-        cam = e.camera
+        cam = e.lens
         if i.pressed & ae.SOUTH:
             self.background = (self.background + 1) % len(BACKGROUNDS)
         if i.pressed & ae.START:
@@ -76,7 +76,7 @@ class Game:
             else:
                 self.note = f"photo failed: {self.shot.error}"
             self.shot = None
-        e.frame.camera_background = BACKGROUNDS[self.background]
+        e.frame.lens_background = BACKGROUNDS[self.background]
         # the camera's frame rate, from its sequence numbers
         now = time.monotonic()
         if now - self.last_t >= 1.0:
@@ -90,10 +90,10 @@ class Game:
             self.album.update()
             self.album.render()
             return
-        cam = e.camera
+        cam = e.lens
         w, h = e.scene_size
         if BACKGROUNDS[self.background] == "off":
-            e.hud_camera(w - 170, 30, 160, 120)
+            e.hud_lens(w - 170, 30, 160, 120)
             e.hud_rect(w - 171, 29, 162, 1, WHITE); e.hud_rect(w - 171, 150, 162, 1, WHITE)
             e.hud_rect(w - 171, 29, 1, 122, WHITE); e.hud_rect(w - 10, 29, 1, 122, WHITE)
         e.hud_rect(0, 0, w, 24, 0x00000090)

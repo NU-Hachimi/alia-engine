@@ -349,10 +349,10 @@ struct PyAudio {
     nb::object engine_obj;
     runtime::Engine& e() const { return nb::cast<PyEngine&>(engine_obj).get(); }
 };
-struct PyCameraApi {
+struct PyLens {
     nb::object engine_obj;
     runtime::Engine& e() const { return nb::cast<PyEngine&>(engine_obj).get(); }
-    runtime::Camera& c() const { return e().camera(); }
+    runtime::Lens& c() const { return e().lens(); }
 };
 struct PyTexture {
     nb::object engine_obj;
@@ -381,7 +381,7 @@ bool linear_filter(const std::string& f) {
 struct PyPhoto {
     nb::object engine_obj;
     uint32_t id;
-    const runtime::Camera::Photo* p() const { return nb::cast<PyEngine&>(engine_obj).get().camera().photo(id); }
+    const runtime::Lens::Photo* p() const { return nb::cast<PyEngine&>(engine_obj).get().lens().photo(id); }
 };
 struct PySound {
     nb::object engine_obj;
@@ -507,17 +507,17 @@ NB_MODULE(alia_engine, m) {
         .def_rw("character", &render::FrameDesc::character)
         .def_rw("overlay", &render::FrameDesc::overlay)
         .def_prop_rw(
-            "camera_background",
+            "lens_background",
             [](render::FrameDesc& f) {
-                return f.camera_background == render::CameraBackground::Cover ? "cover"
-                       : f.camera_background == render::CameraBackground::Fit ? "fit" : "off";
+                return f.lens_background == render::LensBackground::Cover ? "cover"
+                       : f.lens_background == render::LensBackground::Fit ? "fit" : "off";
             },
             [](render::FrameDesc& f, const std::string& v) {
-                f.camera_background = choice<render::CameraBackground>(
-                    v, {{"off", render::CameraBackground::Off}, {"cover", render::CameraBackground::Cover},
-                        {"fit", render::CameraBackground::Fit}}, "camera_background");
+                f.lens_background = choice<render::LensBackground>(
+                    v, {{"off", render::LensBackground::Off}, {"cover", render::LensBackground::Cover},
+                        {"fit", render::LensBackground::Fit}}, "lens_background");
             },
-            "The camera's image instead of the sky (Engine.camera): 'cover' fills the scene and crops, 'fit' shows "
+            "The camera's image instead of the sky (Engine.lens): 'cover' fills the scene and crops, 'fit' shows "
             "all of it with black bars, 'off'. Black until there is an image.");
 
     nb::class_<Mesh>(m, "Mesh",
@@ -939,34 +939,34 @@ NB_MODULE(alia_engine, m) {
              "fade"_a = 0.0f)
         .def("set_pan", [](PyVoice& v, float pan) { v.m().set_pan(v.id, pan); }, "pan"_a);
 
-    nb::class_<runtime::Camera::Mode>(m, "CameraMode",
+    nb::class_<runtime::Lens::Mode>(m, "LensMode",
                                       "The sensor mode the camera runs in. Intrinsics in the raw frame's pixels, before "
                                       "turn; measured False: the module's typical values, not this unit's.")
-        .def_ro("width", &runtime::Camera::Mode::width)
-        .def_ro("height", &runtime::Camera::Mode::height)
-        .def_ro("fps", &runtime::Camera::Mode::fps)
-        .def_ro("turn", &runtime::Camera::Mode::turn)
-        .def_ro("order", &runtime::Camera::Mode::order)
-        .def_ro("fx", &runtime::Camera::Mode::fx)
-        .def_ro("fy", &runtime::Camera::Mode::fy)
-        .def_ro("cx", &runtime::Camera::Mode::cx)
-        .def_ro("cy", &runtime::Camera::Mode::cy)
-        .def_ro("k1", &runtime::Camera::Mode::k1)
-        .def_ro("k2", &runtime::Camera::Mode::k2)
-        .def_ro("p1", &runtime::Camera::Mode::p1)
-        .def_ro("p2", &runtime::Camera::Mode::p2)
-        .def_ro("k3", &runtime::Camera::Mode::k3)
-        .def_ro("measured", &runtime::Camera::Mode::measured)
-        .def_ro("line_time_ns", &runtime::Camera::Mode::line_time_ns);
-    nb::class_<runtime::Camera::Frame>(m, "CameraFrame", "The newest frame the camera sent.")
-        .def_ro("sequence", &runtime::Camera::Frame::sequence)
-        .def_ro("timestamp_ns", &runtime::Camera::Frame::timestamp_ns, "CLOCK_MONOTONIC, end of exposure")
-        .def_ro("exposure_us", &runtime::Camera::Frame::exposure_us)
-        .def_ro("gain", &runtime::Camera::Frame::gain)
-        .def_ro("wb_red", &runtime::Camera::Frame::wb_red)
-        .def_ro("wb_blue", &runtime::Camera::Frame::wb_blue)
-        .def_ro("colour_temperature", &runtime::Camera::Frame::colour_temperature);
-    nb::class_<PyPhoto>(m, "Photo", "A photo being taken (Camera.photo()): done, then jpeg or error.")
+        .def_ro("width", &runtime::Lens::Mode::width)
+        .def_ro("height", &runtime::Lens::Mode::height)
+        .def_ro("fps", &runtime::Lens::Mode::fps)
+        .def_ro("turn", &runtime::Lens::Mode::turn)
+        .def_ro("order", &runtime::Lens::Mode::order)
+        .def_ro("fx", &runtime::Lens::Mode::fx)
+        .def_ro("fy", &runtime::Lens::Mode::fy)
+        .def_ro("cx", &runtime::Lens::Mode::cx)
+        .def_ro("cy", &runtime::Lens::Mode::cy)
+        .def_ro("k1", &runtime::Lens::Mode::k1)
+        .def_ro("k2", &runtime::Lens::Mode::k2)
+        .def_ro("p1", &runtime::Lens::Mode::p1)
+        .def_ro("p2", &runtime::Lens::Mode::p2)
+        .def_ro("k3", &runtime::Lens::Mode::k3)
+        .def_ro("measured", &runtime::Lens::Mode::measured)
+        .def_ro("line_time_ns", &runtime::Lens::Mode::line_time_ns);
+    nb::class_<runtime::Lens::Frame>(m, "LensFrame", "The newest frame the camera sent.")
+        .def_ro("sequence", &runtime::Lens::Frame::sequence)
+        .def_ro("timestamp_ns", &runtime::Lens::Frame::timestamp_ns, "CLOCK_MONOTONIC, end of exposure")
+        .def_ro("exposure_us", &runtime::Lens::Frame::exposure_us)
+        .def_ro("gain", &runtime::Lens::Frame::gain)
+        .def_ro("wb_red", &runtime::Lens::Frame::wb_red)
+        .def_ro("wb_blue", &runtime::Lens::Frame::wb_blue)
+        .def_ro("colour_temperature", &runtime::Lens::Frame::colour_temperature);
+    nb::class_<PyPhoto>(m, "Photo", "A photo being taken (Lens.photo()): done, then jpeg or error.")
         .def_prop_ro("done", [](PyPhoto& p) { return p.p() && p.p()->done; })
         .def_prop_ro("jpeg",
                      [](PyPhoto& p) -> nb::object {
@@ -982,69 +982,69 @@ NB_MODULE(alia_engine, m) {
             return nb::str(r->error.c_str());
         });
     nb::class_<PyTexture>(m, "Texture",
-                          "A texture (docs/textures.md): an image on the GPU, for hud_image (and, later, materials).")
-        .def_prop_ro("width", [](PyTexture& t) { auto* i = t.info(); return t.id == runtime::Engine::kCameraTexture ? t.e().camera().image_width() : i ? i->width : 0; })
-        .def_prop_ro("height", [](PyTexture& t) { auto* i = t.info(); return t.id == runtime::Engine::kCameraTexture ? t.e().camera().image_height() : i ? i->height : 0; })
+                          "A texture (docs/textures.md): an image on the GPU, for hud_image (and, later, materials); Engine.lens.texture is the camera's image.")
+        .def_prop_ro("width", [](PyTexture& t) { auto* i = t.info(); return t.id == runtime::Engine::kLensTexture ? t.e().lens().image_width() : i ? i->width : 0; })
+        .def_prop_ro("height", [](PyTexture& t) { auto* i = t.info(); return t.id == runtime::Engine::kLensTexture ? t.e().lens().image_height() : i ? i->height : 0; })
         .def_prop_ro("ready",
                      [](PyTexture& t) {
-                         if (t.id == runtime::Engine::kCameraTexture) return bool(t.e().camera().image());
+                         if (t.id == runtime::Engine::kLensTexture) return bool(t.e().lens().image());
                          auto* i = t.info();
                          return i && i->ready;
                      },
                      "True once it's on the GPU (load_texture_async: after a few frames).")
         .def_prop_ro("done",
                      [](PyTexture& t) {
-                         if (t.id == runtime::Engine::kCameraTexture) return true;
+                         if (t.id == runtime::Engine::kLensTexture) return true;
                          auto* i = t.info();
                          return !i || i->ready || !i->error.empty();
                      },
                      "Loaded or failed (then error).")
         .def_prop_ro("error", [](PyTexture& t) -> nb::object {
             auto* i = t.info();
-            if (t.id == runtime::Engine::kCameraTexture || (i && i->error.empty())) return nb::none();
+            if (t.id == runtime::Engine::kLensTexture || (i && i->error.empty())) return nb::none();
             return nb::str(i ? i->error.c_str() : "destroyed");
         })
         .def("update",
              [](PyTexture& t, const nb::bytes& rgba) {
                  std::string err;
-                 if (t.id == runtime::Engine::kCameraTexture) throw nb::value_error("the camera's texture is the camera's");
+                 if (t.id == runtime::Engine::kLensTexture) throw nb::value_error("the camera's texture is the camera's");
                  if (!t.e().update_texture(t.id, reinterpret_cast<const uint8_t*>(rgba.data()), rgba.size(), &err))
                      throw nb::value_error(err.c_str());
              },
              "rgba"_a, "New pixels: width * height * 4 bytes, top row first.")
-        .def("destroy", [](PyTexture& t) { if (t.id != runtime::Engine::kCameraTexture) t.e().destroy_texture(t.id); },
+        .def("destroy", [](PyTexture& t) { if (t.id != runtime::Engine::kLensTexture) t.e().destroy_texture(t.id); },
              "Free it (GPU memory); drawing it afterwards draws nothing.");
 
-    nb::class_<PyCameraApi>(m, "DeviceCamera",
-                            "The handheld's camera, Engine.camera (docs/camera.md; not World.camera, the view). The cart's manifest declares [permissions] camera; "
+    nb::class_<PyLens>(m, "Lens",
+                            "The handheld's camera, Engine.lens (docs/camera.md; not World.camera, the view into the scene). The cart's manifest declares [permissions] camera; "
                             "the first open() asks the user (state 'pending'; the system pauses the game while it asks).")
         .def(
             "open",
-            [](PyCameraApi& c, std::optional<int> w, std::optional<int> h, bool full_fov) {
+            [](PyLens& c, std::optional<int> w, std::optional<int> h, bool full_fov) {
                 runtime::Engine& e = c.e();
                 c.c().open(w.value_or(e.scene_width()), h.value_or(e.scene_height()), full_fov);
             },
             "width"_a = nb::none(), "height"_a = nb::none(), "full_fov"_a = true,
             "Ask for the camera, at the size you draw it (default: the scene's); full_fov False allows a centre crop "
             "(narrower, cheaper). Never blocks: watch state. Open already: nothing (close() first for another size).")
-        .def("close", [](PyCameraApi& c) { c.e().close_camera(); }, "Done with it: the sensor powers down.")
-        .def_prop_ro("state", [](PyCameraApi& c) { return runtime::Camera::name(c.c().state()); },
+        .def("close", [](PyLens& c) { c.e().close_lens(); }, "Done with it: the sensor powers down.")
+        .def_prop_ro("state", [](PyLens& c) { return runtime::Lens::name(c.c().state()); },
                      "closed, starting, pending (asking the user), running, paused; or why not: denied, revoked, busy, "
                      "unavailable, suspended, failed.")
-        .def_prop_ro("message", [](PyCameraApi& c) { return c.c().message(); }, "What went wrong (for developers).")
+        .def_prop_ro("message", [](PyLens& c) { return c.c().message(); }, "What went wrong (for developers).")
         .def_prop_ro("size",
-                     [](PyCameraApi& c) -> std::optional<std::pair<int, int>> {
+                     [](PyLens& c) -> std::optional<std::pair<int, int>> {
                          if (!c.c().image()) return std::nullopt;
                          return std::pair{c.c().image_width(), c.c().image_height()};
                      },
                      "The image's size (turned upright), or None until the first frame.")
-        .def_prop_ro("mode", [](PyCameraApi& c) { return c.c().mode(); })
-        .def_prop_ro("frame", [](PyCameraApi& c) { return c.c().frame(); })
-        .def_prop_ro("texture", [](PyCameraApi& c) { return PyTexture{c.engine_obj, runtime::Engine::kCameraTexture}; },
+        .def_prop_ro("mode", [](PyLens& c) { return c.c().mode(); })
+        .def_prop_ro("frame", [](PyLens& c) { return c.c().frame(); })
+        .def_prop_ro("texture", [](PyLens& c) { return PyTexture{c.engine_obj, runtime::Engine::kLensTexture}; },
                      "The camera's image as a texture (hud_image; later materials), new each frame.")
-        .def_prop_ro("zero_copy", [](PyCameraApi& c) { return c.c().zero_copy(); },
+        .def_prop_ro("zero_copy", [](PyLens& c) { return c.c().zero_copy(); },
                      "True when the GPU reads the frames in place (the handheld); False: copied (some simulators).")
-        .def("photo", [](PyCameraApi& c) { return PyPhoto{c.engine_obj, c.c().take_photo()}; },
+        .def("photo", [](PyLens& c) { return PyPhoto{c.engine_obj, c.c().take_photo()}; },
              "Take a photo, asynchronously: a Photo; poll .done. Only while the camera is open (else .error). The "
              "engine doesn't keep it: save .jpeg yourself (save.write).");
 
@@ -1494,7 +1494,7 @@ NB_MODULE(alia_engine, m) {
              "Alia Pad until the motor hardware). Safe to call anyway.")
         .def_prop_ro("actions", [](nb::object self) { return PyActions{self}; }, "Named input actions (docs/api.md §7).")
         .def_prop_ro("audio", [](nb::object self) { return PyAudio{self}; }, "The mixer (docs/api.md §7).")
-        .def_prop_ro("camera", [](nb::object self) { return PyCameraApi{self}; }, "The camera (docs/camera.md).")
+        .def_prop_ro("lens", [](nb::object self) { return PyLens{self}; }, "The handheld's camera (docs/camera.md); the view into the scene is world.camera.")
         .def(
             "particles",
             [](nb::object self, uint32_t mesh, nb::handle lifetime, nb::handle speed, std::array<float, 3> velocity,
@@ -1640,9 +1640,9 @@ NB_MODULE(alia_engine, m) {
              "texture"_a, "x"_a, "y"_a, "w"_a, "h"_a, "fit"_a = false, "color"_a = 0xFFFFFFFFu, "src"_a = nb::none(),
              "A texture in a box, scene pixels: cropped to fill it, or with fit all of it, centred; color multiplies "
              "it; src=(u0, v0, u1, v1) draws only that part (0..1, top-left origin). Nothing until it's loaded.")
-        .def("hud_camera",
+        .def("hud_lens",
              [](PyEngine& e, float x, float y, float w, float h, bool fit, uint32_t color) {
-                 e.get().hud_camera(x, y, w, h, fit, color);
+                 e.get().hud_lens(x, y, w, h, fit, color);
              },
              "x"_a, "y"_a, "w"_a, "h"_a, "fit"_a = false, "color"_a = 0xFFFFFFFFu,
              "The camera's image in a box, scene pixels: cropped to fill it, or with fit all of it, centred; color "

@@ -174,14 +174,14 @@ dark = tuple(round((30 - BLACK) / (255 - BLACK) * 255) for _ in range(3))
 with tempfile.TemporaryDirectory() as tmp:
     os.environ["ALIA_CAMERA_SOCKET"] = path = os.path.join(tmp, "camera.sock")
     e = ae.Engine(headless=True, size=(640, 360))
-    cam = e.camera
+    cam = e.lens
     check(cam.state == "closed" and cam.size is None and cam.photo().error, "closed: no image; a photo fails at once")
 
     # no service: unavailable, the background and the box black
     cam.open()
     check(cam.state == "unavailable" and "no camera service" in cam.message, "no service: unavailable")
-    e.frame.camera_background = "cover"
-    frames(e, 2, lambda e: e.hud_camera(10, 10, 50, 50))
+    e.frame.lens_background = "cover"
+    frames(e, 2, lambda e: e.hud_lens(10, 10, 50, 50))
     shot = os.path.join(tmp, "none.png")
     e.screenshot(shot, scene_only=True)
     check(pixel(shot, 320, 180) == (0, 0, 0) and pixel(shot, 30, 30) == (0, 0, 0),
@@ -207,19 +207,19 @@ with tempfile.TemporaryDirectory() as tmp:
     # cover: the 4:3 image scaled to 640x480, the middle 360 rows shown; the coloured quarter is the top-left
     check(near(pixel(shot, 100, 60), expect) and near(pixel(shot, 500, 300), dark),
           f"cover: developed colours, top-left up ({pixel(shot, 100, 60)} ~ {expect}; {pixel(shot, 500, 300)} ~ {dark})")
-    e.frame.camera_background = "fit"
+    e.frame.lens_background = "fit"
     frames(e, 2)
     e.screenshot(shot, scene_only=True)
     check(pixel(shot, 40, 180) == (0, 0, 0) and near(pixel(shot, 150, 60), expect),
           "fit: black bars at the sides, the image between")
-    e.frame.camera_background = "off"
-    frames(e, 2, lambda e: e.hud_camera(0, 0, 160, 120))
+    e.frame.lens_background = "off"
+    frames(e, 2, lambda e: e.hud_lens(0, 0, 160, 120))
     e.screenshot(shot, scene_only=True)
-    check(near(pixel(shot, 40, 30), expect) and near(pixel(shot, 120, 90), dark), "hud_camera: the image in a box")
+    check(near(pixel(shot, 40, 30), expect) and near(pixel(shot, 120, 90), dark), "hud_lens: the image in a box")
     frames(e, 2, lambda e: e.hud_image(cam.texture, 0, 0, 160, 120))
     e.screenshot(shot, scene_only=True)
     check(cam.texture.ready and cam.texture.width == 320 and near(pixel(shot, 40, 30), expect),
-          "the camera's texture in hud_image, the same as hud_camera")
+          "the camera's texture in hud_image, the same as hud_lens")
 
     # a photo: PAUSED while the sensor changes mode, a new MODE (imports redone), RESUMED, the JPEG
     shot_ = cam.photo()
@@ -264,7 +264,7 @@ with tempfile.TemporaryDirectory() as tmp:
     deadline = time.time() + 5
     while cam.state != "running" and time.time() < deadline:
         frames(e, 1)
-    frames(e, 3, lambda e: e.hud_camera(0, 0, 120, 160))
+    frames(e, 3, lambda e: e.hud_lens(0, 0, 120, 160))
     shot = os.path.join(tmp, "turn.png")
     e.screenshot(shot, scene_only=True)
     check(cam.size == (240, 320) and near(pixel(shot, 90, 40), expect) and near(pixel(shot, 30, 40), dark)
