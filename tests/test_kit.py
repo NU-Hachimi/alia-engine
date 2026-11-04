@@ -81,11 +81,11 @@ check(pool.get() == a and len(made) == 2, "Pool reuses what was released")
 
 # Shapes: every triangle faces out (counter-clockwise from outside), none without area, one colour per triangle.
 real_mesh = kit._mesh
-kit._mesh = lambda p, i, c, material=None: (p, i, c)  # the data, not an engine mesh
+kit._mesh = lambda p, i, c, material=None, uv=None: (p, i, c, uv)  # the data, not an engine mesh
 
 
 def faces_out(shape, outward):
-    p, i, c = shape
+    p, i, c, _ = shape
     ok = len(c) == len(i) // 3
     for t in range(0, len(i), 3):
         a, b, d = ([p[3 * v + k] for k in range(3)] for v in i[t:t + 3])
@@ -101,7 +101,17 @@ check(len(kit.box(colour=(1, 2, 3, 4, 5, 6))[2]) == 12, "box: a colour per face"
 check(faces_out(kit.sphere(2.0, rings=6, segments=10), lambda m: m) and len(kit.sphere()[1]) == 300, "sphere: 100 triangles facing out")
 check(faces_out(kit.cylinder(0.5, 2.0), lambda m: (m[0], 0.0 if 0 < m[1] < 2 else m[1] - 1, m[2])), "cylinder: sides and caps face out")
 pl = kit.plane(4, 4, 1, divisions=2, checker=2)
-check(faces_out(pl, lambda m: (0, 1, 0)) and pl[2] == [1, 1, 2, 2, 2, 2, 1, 1], "plane: faces up, checkered")
+check(faces_out(pl, lambda m: (0, 1, 0)) and pl[2] == [1, 1, 2, 2, 2, 2, 1, 1] and pl[3] is None, "plane: faces up, checkered")
+pl = kit.plane(4, 4, tiles=(3, 2))
+check(pl[3] and max(pl[3][0::2]) == 3 and max(pl[3][1::2]) == 2 and len(pl[3]) == len(pl[0]) // 3 * 2, "plane: tiles -> uv")
+q = kit.quad(2, 1, centre=(0, 1, 5))
+check(faces_out(q, lambda m: (0, 0, -1)), "quad: faces -Z")
+# the texture's top-left (uv 0, 0) at the top, on the left as seen from in front (-Z, where +X is on the left)
+tl = [q[0][3 * v:3 * v + 3] for v in range(4) if q[3][2 * v:2 * v + 2] == [0, 0]][0]
+check(tl[1] > 1 and tl[0] > 0, f"quad: the texture the right way up and round ({tl})")
+tb = kit.textured_box(2, 1, 3, centre=(1, 2, 3))
+check(faces_out(tb, lambda m: (m[0] - 1, m[1] - 2, m[2] - 3)) and len(tb[0]) == 72 and len(tb[3]) == 48,
+      "textured_box: 12 triangles facing out, 24 vertices with uv")
 kit._mesh = real_mesh
 
 h = kit.hills(seed=3, amplitude=2.0)

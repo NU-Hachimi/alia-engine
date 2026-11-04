@@ -132,6 +132,7 @@ bool Pack::read_mesh(const Entry& e, MeshData* out, std::string* error) const {
         }
         ok = r.ok && parts > 0;
     }
+    if (ok && (flags & 4)) ok = r.array(out->uv, size_t(nv) * 2);  // last, so engines before it read the rest
     if (!ok) return fail(error, e.name + ": truncated");
     for (uint16_t i : out->indices)
         if (i >= nv) return fail(error, e.name + ": index out of range");
@@ -154,7 +155,7 @@ bool Pack::read_material(const Entry& e, MaterialData* out, std::string* error) 
     r.u16();
     m.opacity = r.f32();
     if (!r.ok) return fail(error, e.name + ": truncated material");
-    if (m.shading > 2 || m.color > 1 || m.light > 1 || m.alpha_mode > 1)
+    if (m.shading > 2 || m.color > 2 || m.light > 1 || m.alpha_mode > 2)
         return fail(error, e.name + ": unknown shading, colour, light or alpha mode");
     m.double_sided = flags & 1;
     m.fog = flags & 2;

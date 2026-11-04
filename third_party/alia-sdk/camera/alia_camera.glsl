@@ -45,3 +45,21 @@ vec3 alia_camera_rgb(sampler2D raw, ivec2 size, ivec2 rpos, float black, vec2 wb
     return vec3(texture(tone_lut, vec2(rgb.r, 0.5)).r, texture(tone_lut, vec2(rgb.g, 0.5)).r,
                 texture(tone_lut, vec2(rgb.b, 0.5)).r);
 }
+
+// Cheaper, for drawing at about half the mode's size or less (a 640x360 texture from the 1640
+// mode, a small preview): one colour per 2x2 Bayer cell, read straight from its four samples
+// (4 reads instead of 9, no interpolation). cell: the cell (half the raw coordinates), e.g.
+// alia_camera_pixel(uv, size, turn) / 2.
+vec3 alia_camera_rgb_cell(sampler2D raw, ivec2 size, ivec2 rpos, float black, vec2 wb, sampler2D shade,
+                          sampler2D tone_lut, mat3 ccm, ivec2 cell) {
+    ivec2 p = cell * 2;
+    float a = alia_camera_px_(raw, size, p), b = alia_camera_px_(raw, size, p + ivec2(1, 0));
+    float c = alia_camera_px_(raw, size, p + ivec2(0, 1)), d = alia_camera_px_(raw, size, p + ivec2(1, 1));
+    vec3 rgb = rpos == ivec2(0, 0) ? vec3(a, (b + c) * 0.5, d) : rpos == ivec2(1, 1) ? vec3(d, (b + c) * 0.5, a)
+             : rpos == ivec2(1, 0) ? vec3(b, (a + d) * 0.5, c) : vec3(c, (a + d) * 0.5, b);
+    vec3 sh = texture(shade, (vec2(p) + 1.0) / vec2(size)).rgb;
+    rgb = min(max(rgb - black, 0.0) / (1.0 - black) * vec3(wb.x * sh.r, 1.0, wb.y * sh.b), 1.0);
+    rgb = clamp(ccm * (rgb * sh.g), 0.0, 1.0) * (1023.0 / 1024.0) + 0.5 / 1024.0;
+    return vec3(texture(tone_lut, vec2(rgb.r, 0.5)).r, texture(tone_lut, vec2(rgb.g, 0.5)).r,
+                texture(tone_lut, vec2(rgb.b, 0.5)).r);
+}

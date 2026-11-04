@@ -258,11 +258,64 @@ class Sandbox:
         self.prints = []  # (node, age)
         self.labels.append(((6.0, 3.1, -14.0), "RIG + EVENTS + IK"))
 
+        self.textures(e, w)
+
         cam = w.camera
         cam.position, cam.yaw, cam.pitch, cam.fov_x, cam.far = START[0], START[1], START[2], math.radians(75), 90.0
         self.cam = cam
         self.fly = kit.FlyCamera(cam, speed=MOVE_SPEED, look_speed=LOOK_SPEED, min_pitch=-1.3, max_pitch=1.3, level=True)
         self.apply_look()
+
+    def textures(self, e, w):
+        """Textured materials (docs/textures.md T2), to the right of the hierarchy: a crate (lit like any colour), the
+        same grey texture tinted twice, a bush of crossed CUTOUT cards, a tiled floor (wrap 'repeat'), and a screen
+        whose texture changes every frame (tex.update). The textures are made in code: no files."""
+        M, T = ae.Material, ae.ColorSource.TEXTURE
+
+        def image(n, fn):
+            return bytes(b for y in range(n) for x in range(n) for b in fn(x, y))
+
+        def planks(x, y):  # 16x16 wood: boards, a darker frame, nail dots
+            edge = x in (0, 15) or y in (0, 15)
+            seam = y % 5 == 0
+            nail = (x in (2, 13)) and (y % 5 == 2)
+            v = 70 if edge else 95 if seam or nail else 150 + (x * 7 + y * 3) % 23
+            return (v, int(v * 0.72), int(v * 0.45), 255)
+
+        def grey(x, y):  # the same boards in grey: tints colour it
+            v = planks(x, y)[0]
+            return (v + 60, v + 60, v + 60, 255)
+
+        def leaves(x, y):  # leaf blobs with holes: CUTOUT drops the clear texels
+            d = ((x - 8) ** 2 + (y - 9) ** 2) ** 0.5
+            hole = (x * 5 + y * 3) % 7 == 0 or d > 7.5
+            return (40 + (x * 11) % 40, 120 + (y * 13) % 60, 40, 0 if hole else 255)
+
+        def tiles(x, y):  # 8x8 floor tile
+            return (200, 190, 170, 255) if (x < 7 and y < 7) else (90, 80, 70, 255)
+
+        crate_tex = e.create_texture(16, 16, image(16, planks))
+        grey_tex = e.create_texture(16, 16, image(16, grey))
+        leaf_tex = e.create_texture(16, 16, image(16, leaves))
+        tile_tex = e.create_texture(8, 8, image(8, tiles), wrap="repeat")
+        self.screen_tex = e.create_texture(32, 16, bytes(32 * 16 * 4))
+        crate = e.create_mesh(kit.textured_box(1.4, 1.4, 1.4, e.create_material(M(color=T, texture=crate_tex))))
+        tinted = e.create_mesh(kit.textured_box(1.0, 1.0, 1.0, e.create_material(M(color=T, texture=grey_tex))))
+        leaf_mat = e.create_material(M(shading=ae.Shading.UNLIT, color=T, texture=leaf_tex, alpha_mode=ae.AlphaMode.CUTOUT,
+                                       double_sided=True))
+        card = e.create_mesh(kit.quad(1.8, 1.8, leaf_mat, centre=(0.0, 0.9, 0.0)))
+        floor = e.create_mesh(kit.plane(5.0, 5.0, material=e.create_material(M(color=T, texture=tile_tex)), tiles=6))
+        screen = e.create_mesh(kit.quad(2.4, 1.2, e.create_material(M(shading=ae.Shading.UNLIT, color=T, texture=self.screen_tex,
+                                                                        double_sided=True))))
+        x0 = -13.0
+        w.spawn(floor, position=(x0 - 3.0, 0.02, -14.0))
+        self.spinning.append((w.spawn(crate, position=(x0, 0.7, -14.0)), 0.3))
+        for k, tint in enumerate((RED, GREEN)):
+            self.spinning.append((w.spawn(tinted, position=(x0 - 2.2, 0.5 + 1.05 * k, -14.0), tint=tint), 0.2 - 0.4 * k))
+        for k in range(3):  # three cards at 60 degrees: a bush from every side
+            w.spawn(card, position=(x0 - 4.4, 0.0, -14.0), yaw=k * math.pi / 3)
+        w.spawn(screen, position=(x0 - 6.6, 1.4, -14.0))
+        self.labels.append(((x0 - 3.3, 3.0, -14.0), "TEXTURES: CRATE  TINT  CUTOUT  TILED  LIVE"))
 
     def apply_look(self):
         name, colors = PALETTES[self.palette]
@@ -339,6 +392,10 @@ class Sandbox:
     # ---- drawing: every displayed frame ----
     def render(self, e, alpha):
         f, t = e.frame, self.t
+        # the screen's texture: moving bars, drawn on the CPU and uploaded every frame
+        k = int(t * 12)
+        self.screen_tex.update(bytes(b for y in range(16) for x in range(32)
+                                     for b in ((40, 220, 255, 255) if (x + y + k) % 8 < 3 else (10, 30, 60, 255))))
         f.fog_steps = 16 if self.fog else 0
         f.ground_fog, f.ground_top, f.ground_ramp = (0.8 if self.ground_fog else 0.0), 1.5, 45.0
         sun_yaw = t * 0.6 if self.sun_turns else 0.8

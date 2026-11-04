@@ -145,17 +145,20 @@ rune = e.create_mesh(ae.Mesh(positions, indices, tri_palette=colors,
                              submeshes=[(0, 10, 0), (10, 4, glow)]))   # (first_tri, tri_count, material id)
 meshes, materials = e.load_pack("gen/props.apak")                     # 或者放进资源包（formats.md 类型 2）
 e.update_material(glass, ae.Material(...))
+crate = e.create_material(ae.Material(color=ae.ColorSource.TEXTURE, texture=e.load_texture("art/crate.png")))
+box = e.create_mesh(kit.textured_box(1, 1, 1, crate))                 # 网格要有 uv（ae.Mesh(..., uv=...)）；docs/textures.md
 ```
 
 | 字段 | 取值 | 说明 |
 |---|---|---|
 | `shading` | `FLAT`（默认）/ `SMOOTH` / `UNLIT` | 面法线 / 顶点法线 / 不打光 |
-| `color` | `PALETTE`（默认）/ `VERTEX` | 网格的每三角形调色板索引 / 每顶点 RGB。纹理等纹理做出来以后 |
+| `color` | `PALETTE`（默认）/ `VERTEX` / `TEXTURE` | 网格的每三角形调色板索引 / 每顶点 RGB / `texture`（网格要有 `uv`；实例的 `tint` 乘在纹理上；main 上新加的，`docs/textures.md`） |
+| `texture` | `Texture` 或 None | `TEXTURE` 用的纹理（`e.load_texture`、`e.create_texture`、`e.lens.texture`）；None 或还没加载好：白色 |
 | `palette_index` | 0–31 | 非 0：整段都用这个颜色（不需要网格的 `tri_palette`） |
 | `light` | `SUN`（默认）/ `CHARACTER` | 用哪盏灯 |
 | `ambient`、`diffuse` | 0..1，负数 = 用灯的默认值 | |
 | `emissive` | 0..1 | 从受光的颜色混向不受光的颜色（发光的符文、火花）；1 等于不打光 |
-| `alpha_mode`、`opacity` | `OPAQUE`（默认）/ `BLEND` | 半透明的段在所有不透明之后、按实例中心从远到近画，测深度不写深度（有填充率代价，`architecture.md` §6.2）。`cutout` 等纹理 |
+| `alpha_mode`、`opacity` | `OPAQUE`（默认）/ `BLEND` | 半透明的段在所有不透明之后、按实例中心从远到近画，测深度不写深度（有填充率代价，`architecture.md` §6.2）。`CUTOUT`：纹理的 alpha 低于一半的地方不画（树叶、栅栏），不排序、照常合批 |
 | `double_sided` | bool | 不剔除背面 |
 | `fog`、`ground_fog` | bool | 是否受距离雾、贴地雾影响 |
 
@@ -412,7 +415,9 @@ pool = kit.Pool(make, on_get=..., on_release=...); pool.get(), pool.release(obj)
 kit.box(sx, sy, sz, colour, centre=(0, 0, 0))             # 箱子；colour 一个索引，或 6 个（-Z、+Z、-Y、+Y、+X、-X 面）
 kit.sphere(radius, colour, rings=6, segments=10)          # 低多边形球，100 个三角形
 kit.cylinder(radius, height, colour, segments=10, cap=None)  # 立着的圆柱，y 从 0 到 height（柱子、树干）
-kit.plane(width, depth, colour, divisions=1, checker=None)   # y=0 的平地，checker 给了就是棋盘格
+kit.plane(width, depth, colour, divisions=1, checker=None, tiles=None)   # y=0 的平地，checker 给了就是棋盘格；tiles：带纹理时铺几遍
+kit.quad(width, height, material, centre=(0, 0, 0), tiles=1) # 立着的矩形，朝 -Z，纹理正着贴：牌子、屏幕、树叶片（main 上新加的）
+kit.textured_box(sx, sy, sz, material, centre=(0, 0, 0))     # 每个面贴整张纹理的箱子（main 上新加的）
 height = kit.hills(seed=1, amplitude=2.0, scale=0.06, octaves=3)   # 函数 (x, z) -> y：起伏的山坡，同一个 seed 一样
 t = kit.Terrain(e, size=64, cell=4, height=height, colours=(21, 20), centre=(0, 0))  # 画地面 + set_ground
 kit.environment(e, "dusk")                                # day / dusk / night / overcast：天空、雾、太阳、角色光
@@ -453,7 +458,7 @@ kit.pal.RED, kit.pal.GRASS, ...        # 默认调色板的索引（网格、tin
 
 ## 8. 还没有的（以后）
 
-- **纹理的其余部分**：纹理对象和 HUD 里的图片已经有了（main 上）；带纹理的材质（网格 UV、`TEXTURE`、`CUTOUT`）、资源包里的纹理、ETC2、图集按 `docs/textures.md` 的 T2、T3 做。
+- **纹理的其余部分**：纹理对象、HUD 里的图片、带纹理的材质已经有了（main 上）；资源包里的纹理、ETC2、图集按 `docs/textures.md` 的 T3 做。
 - **公告板粒子、光晕粒子**：老掌机（PS1、N64、PSP）的做法是**加法混合的公告板**：朝相机的小方块，贴一张中心亮、边缘透明的径向渐变，颜色直接加在背后的像素上。比半透明的壳便宜得多：两个三角形；加法和顺序无关，所以不用排序、一个模板仍然一次 instanced draw；开销只在填充率（估计 1000 个、每个约 20×20 像素，约 1.7 个全屏层，板上约 0.6 ms）。要做的三件事：材质加 `AlphaMode.ADD`（加法的部分也走实例化、不排序）；粒子系统里让方块朝相机；软边的贴图（等纹理），或者不用纹理的替代：中心亮、边缘为 0 的小圆盘，靠顶点颜色带一个亮度。现在的"发光"只是材质的 emissive + 不受雾影响（sandbox 的发光球）。
 - **粒子的其他部分**：子发射器（死亡、落地时触发另一个发射器）、从资源包读模板、粒子和碰撞体的碰撞。
 - **字体**：HUD 只有一套内置的 5×7 像素字体，只有 ASCII。要显示中文，得先做字体：资源包里的位图字体（一张字形图集 + 字符表），打包时只烘焙游戏用到的汉字（掌机上整套 CJK 太大），像素风的 CJK 字体（比如 12 px，要挑许可合适的）。和 E7 的 2D 一起做（`architecture.md` §6.3）。
@@ -465,7 +470,7 @@ kit.pal.RED, kit.pal.GRASS, ...        # 默认调色板的索引（网格、tin
 
 1. 世界接口用"物体 + 属性"（§3），不用 Unity 式的 `GameObject` + `transform`。
 2. E4 的顺序：1 资源 ✅ → 2 材质 → 3 世界 → 4 动画 → 5 碰撞 → 6 粒子（同时给 L2 加实例化）→ 7 系统 → 8 收尾（Megalith 完全迁到场景 API、3D 示例卡带、API 文档）。材质在世界之前，世界的 `MeshRenderer` 就不用改两次。
-3. 纹理：材质里先留 `color = texture` 和 `alpha_mode = cutout` 的位置，真正的纹理（ETC2、图集）等 2D（E7）或者有游戏要用时再做；公告板粒子也等它。
+3. 纹理：按 `docs/textures.md` 分三步做（2026-11-04 定）：T1 纹理对象和 HUD 里的图片、T2 带纹理的材质（已做）、T3 资源包里的纹理、ETC2、图集；公告板粒子也在 T3。
 4. 在途帧和每帧动态数据的环形缓冲：现在交给驱动（GLES 隐式同步，结果正确），**出现性能瓶颈时再做**（2–3 帧深的环形缓冲加 fence）；将来的 Vulkan 后端在后端内部实现在途帧，游戏和上层不用改。
 5. **不做"游戏对象"层**（2026-10-29，方案 B）：引擎只提供积木（`Node`，以后的 Animator、Collider、发射器），游戏用自己的类组织逻辑（例如 Megalith 的 `Player`、`Boss` 持有物体，由 `Game` 统一调度）。不做 Unity 式的"物体上挂脚本、引擎逐个回调 `update()`"：板上 Python 是瓶颈（`architecture.md` §6.2），每个物体每步一次回调撑不住；也不另做一层可选的 `Actor` / `Scene`。示例卡带和文档会演示推荐的组织方式。
 6. **游戏不响应挂起**（2026-10-29）：和其他掌机一样，挂起时系统冻结卡带（SIGSTOP），恢复后系统在冻结的画面上盖"已暂停 · 按任意键继续"。卡带清单用默认的 `pause = "system"`，引擎不装 SIGUSR1/2 的处理，也没有 `Game.suspend()/resume()`。运行时只保证恢复后不追帧：两帧之间超过 0.25 s 的时间直接丢掉，游戏从停下的地方继续（`app.hpp`）。游戏自己的暂停菜单（比如 Megalith 的 Start 菜单）照常是游戏的事。

@@ -32,6 +32,7 @@ struct MeshData {
     std::vector<uint8_t> vertex_rgb;  // RGB per vertex, or empty
     bool double_sided = false;
     std::vector<SubmeshData> submeshes;  // empty: one part, default material
+    std::vector<float> uv;            // u, v per vertex (flags bit 2), or empty
 };
 
 // A material as stored (docs/formats.md type 2); the enum values are render::Shading,

@@ -130,14 +130,15 @@ public:
     static constexpr uint32_t kLensTexture = 0xFFFFFFFFu;
     struct TextureInfo {
         int width = 0, height = 0;
-        bool linear = false, ready = false;
+        bool linear = false, repeat = false, ready = false;  // repeat: tiles outside 0..1 (else the edge)
         std::string error;
     };
     // A file relative to the cart's content/ (asset::content_path), whole.
     static bool read_content(const std::string& path, std::vector<uint8_t>* out, std::string* error);
-    uint32_t load_texture(const std::vector<uint8_t>& png_or_jpeg, int max_side, bool linear, std::string* error);
-    uint32_t load_texture_async(std::vector<uint8_t> png_or_jpeg, int max_side, bool linear);
-    uint32_t create_texture(int width, int height, const uint8_t* rgba, bool linear, std::string* error);
+    uint32_t load_texture(const std::vector<uint8_t>& png_or_jpeg, int max_side, bool linear, std::string* error,
+                          bool repeat = false);
+    uint32_t load_texture_async(std::vector<uint8_t> png_or_jpeg, int max_side, bool linear, bool repeat = false);
+    uint32_t create_texture(int width, int height, const uint8_t* rgba, bool linear, std::string* error, bool repeat = false);
     bool update_texture(uint32_t id, const uint8_t* rgba, size_t size, std::string* error);
     void destroy_texture(uint32_t id);
     const TextureInfo* texture_info(uint32_t id) const;

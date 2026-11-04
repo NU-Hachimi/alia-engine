@@ -221,6 +221,15 @@ with tempfile.TemporaryDirectory() as tmp:
     e.screenshot(shot, scene_only=True)
     check(cam.texture.ready and cam.texture.width == 320 and near(pixel(shot, 40, 30), expect),
           "the camera's texture in hud_image, the same as hud_lens")
+    import alia_kit as kit
+    tv = e.create_mesh(kit.quad(4, 3, e.create_material(ae.Material(shading=ae.Shading.UNLIT, color=ae.ColorSource.TEXTURE,
+                                                                     texture=cam.texture))))
+    e.frame.eye, e.frame.yaw, e.frame.pitch, e.frame.lens_background = (0.0, 0.0, 0.0), 0.0, 0.0, "off"
+    frames(e, 2, lambda e: e.draw(tv, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 2.4]))
+    e.screenshot(shot, scene_only=True)
+    check(near(pixel(shot, 200, 100), expect, 10) and near(pixel(shot, 420, 250), dark, 10),
+          f"the camera on a material (a TV screen): its coloured corner top-left ({pixel(shot, 200, 100)})")
+    e.frame.lens_background, e.frame.eye = "cover", (0.0, 2.0, 0.0)  # back as it was
 
     # a photo: PAUSED while the sensor changes mode, a new MODE (imports redone), RESUMED, the JPEG
     shot_ = cam.photo()
@@ -320,6 +329,19 @@ with tempfile.TemporaryDirectory() as tmp:
     e.screenshot(shot, scene_only=True)
     check(cam.size == (240, 320) and near(pixel(shot, 90, 40), expect) and near(pixel(shot, 30, 40), dark)
           and near(pixel(shot, 90, 120), dark), f"turn 90: {cam.size}, the coloured corner top-right")
+    cam.close()
+
+    # half the frame's size or less: one colour per Bayer cell (the SDK's cheaper path), the same colours
+    fake = FakeCamera(path + "5")
+    os.environ["ALIA_CAMERA_SOCKET"] = path + "5"
+    cam.open(160, 120)
+    deadline = time.time() + 5
+    while cam.state != "running" and time.time() < deadline:
+        frames(e, 1)
+    frames(e, 3, lambda e: e.hud_lens(0, 0, 160, 120))
+    e.screenshot(shot, scene_only=True)
+    check(cam.size == (160, 120) and near(pixel(shot, 40, 30), expect) and near(pixel(shot, 120, 90), dark),
+          f"at half size: {cam.size}, per-cell colours the same")
     cam.close()
     e.close()
     del cam, shot_, e

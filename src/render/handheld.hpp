@@ -34,8 +34,8 @@ enum class Light : uint8_t {
 // baked into a mesh's vertices when the mesh is built; the rest is read at every draw, so
 // update_material() changes them for meshes that already exist.
 enum class Shading : uint8_t { Flat, Smooth, Unlit };  // face normals / averaged normals / no lighting
-enum class ColorSource : uint8_t { Palette, Vertex };  // texture: with the texture work
-enum class AlphaMode : uint8_t { Opaque, Blend };      // cutout: with textures
+enum class ColorSource : uint8_t { Palette, Vertex, Texture };  // Texture: the material's texture (docs/textures.md)
+enum class AlphaMode : uint8_t { Opaque, Blend, Cutout };       // Cutout: texture alpha < 0.5 isn't drawn
 
 struct Material {
     Shading shading = Shading::Flat;
@@ -48,6 +48,9 @@ struct Material {
     float opacity = 1;          // Blend only
     bool double_sided = false;
     bool fog = true, ground_fog = true;
+    // ColorSource::Texture: a texture bound with bind_texture() (0 or not bound: white). The colour is the
+    // texture, times the instance's tint (a palette colour) when it has one, then lit like any other.
+    uint32_t texture = 0;
 };
 
 // A run of triangles drawn with one material.
@@ -67,6 +70,7 @@ struct MeshDesc {
     std::span<const uint8_t> vertex_rgb;
     bool double_sided = false;            // all parts double-sided, whatever their materials say
     std::span<const Submesh> submeshes = {};  // empty: one part, default material
+    std::span<const float> uv = {};       // u, v per vertex (textured parts): 0, 0 the image's top-left corner
 };
 
 struct Instance {
@@ -152,6 +156,9 @@ public:
     bool has_mesh(uint32_t id) const;
 
     void set_palette(rhi::Device& dev, std::span<const uint8_t> rgb);  // up to 32 RGB triples
+    // Textures for materials (Material::texture): the engine's texture ids -> GPU textures; unbind on destroy.
+    void bind_texture(uint32_t id, rhi::TextureH texture, bool linear);
+    void unbind_texture(uint32_t id) { std::erase_if(bound_textures_, [id](const auto& b) { return b.id == id; }); }
     // The camera's image for lens_background ({}: none, drawn black).
     void set_lens_image(rhi::TextureH image, int width, int height) { lens_ = image, lens_w_ = width, lens_h_ = height; }
 
@@ -196,6 +203,15 @@ private:
     rhi::TextureH lens_;
     int lens_w_ = 0, lens_h_ = 0;
     rhi::PipelineH instanced_, instanced_two_sided_;
+    // The same six for textured parts (TEXTURED in the shaders: lit per vertex, textured per pixel).
+    rhi::PipelineH tex_mesh_, tex_mesh_two_sided_, tex_blend_, tex_blend_two_sided_, tex_instanced_, tex_instanced_two_sided_;
+    rhi::TextureH white_;  // a textured part whose texture isn't there
+    struct BoundTexture {
+        uint32_t id;
+        rhi::TextureH texture;
+        bool linear;
+    };
+    std::vector<BoundTexture> bound_textures_;
     rhi::BufferH hud_vb_, instance_vb_;
     size_t instance_capacity_ = 0;
     size_t hud_capacity_ = 0;

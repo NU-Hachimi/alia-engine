@@ -34,7 +34,11 @@ flags bit 0: double-sided (every part, whatever its material says)
 flags bit 1: a part table follows:
     u32 count (>= 1), then per part: u32 first triangle  u32 triangle count  u16 name length  material name
     (an empty name is the default material)
+flags bit 2: f32 uv[vertices][2] last, after the part table   u, v for textured materials; 0, 0 the image's top-left
 ```
+
+The UVs come last (added 2026-11-04, docs/textures.md T2) so an engine from before them still reads the rest of the
+mesh and ignores them; a pack whose materials are textured needs an engine that has textures anyway.
 
 Without a part table the mesh is one part with the **default material**, which picks from the colours the mesh has:
 palette indices → flat shaded, palette colours; otherwise vertex RGB → smooth shaded (normals averaged from the
@@ -44,14 +48,15 @@ unchanged. Normals are not stored: the engine derives them from the part's shadi
 ### Type 2: material (docs/api.md §2)
 
 ```
-u8 shading (0 flat, 1 smooth, 2 unlit)  u8 colour (0 palette, 1 vertex)  u8 palette index (0..31)  u8 light (0 sun, 1 character)
+u8 shading (0 flat, 1 smooth, 2 unlit)  u8 colour (0 palette, 1 vertex, 2 texture)  u8 palette index (0..31)  u8 light (0 sun, 1 character)
 f32 ambient  f32 diffuse        negative: the light's own values
 f32 emissive                    0..1
-u8 alpha mode (0 opaque, 1 blend)  u8 flags (bit 0 double-sided, bit 1 fog, bit 2 ground fog)  u16 0
+u8 alpha mode (0 opaque, 1 blend, 2 cutout)  u8 flags (bit 0 double-sided, bit 1 fog, bit 2 ground fog)  u16 0
 f32 opacity                     0..1, blend only
 ```
 
-Meshes name materials of the same pack. The engine loads every material first; a part naming a material the pack
+A textured material (colour 2) in a pack has no texture yet: the game sets one (`material.texture = tex`,
+`update_material`) until packs hold textures too (docs/textures.md T3). Meshes name materials of the same pack. The engine loads every material first; a part naming a material the pack
 doesn't have is an error (the writer checks it too).
 
 ### Type 3: rig (docs/api.md §4)
@@ -81,5 +86,4 @@ keep pictures identical to the source. When a game's vertex bandwidth shows up i
 with int16 positions (per-mesh scale and offset) and packed normals becomes a new colour/position mode, with the
 GPU vertex format to match.
 
-Still to come: textures (ETC2 in KTX2) when the 2D work and
-textured materials need them (a material colour value 2 and an alpha mode for cutout will refer to them).
+Still to come: textures in packs (ETC2 in KTX2) and a material's texture by name (docs/textures.md T3).

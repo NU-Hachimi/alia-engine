@@ -26,9 +26,9 @@ _DIR = struct.Struct("<BBHII")       # type, flags, name length, offset, size
 _MESH = struct.Struct("<IIBBH")      # vertices, triangles, colours (bit0 palette, bit1 rgb), flags (bit0 double-sided, bit1 parts)
 _MATERIAL = struct.Struct("<BBBBfffBBHf")
 SHADING = {"flat": 0, "smooth": 1, "unlit": 2}
-COLOR = {"palette": 0, "vertex": 1}
+COLOR = {"palette": 0, "vertex": 1, "texture": 2}
 LIGHT = {"sun": 0, "character": 1}
-ALPHA = {"opaque": 0, "blend": 1}
+ALPHA = {"opaque": 0, "blend": 1, "cutout": 2}
 
 
 class PackError(ValueError):
@@ -60,10 +60,11 @@ class PackWriter:
                                                             flags, 0, opacity)))
 
     def add_mesh(self, name, positions, indices, tri_palette=None, vertex_rgb=None, double_sided=False,
-                 submeshes=None):
+                 submeshes=None, uv=None):
         """positions: flat xyz floats; indices: flat triangle indices (counter-clockwise front faces);
         the colours its materials use: tri_palette (a palette index per triangle) and/or vertex_rgb
-        (3 bytes per vertex); submeshes: [(first_tri, tri_count, material name)], "" for the default
+        (3 bytes per vertex) and/or uv (flat u, v floats per vertex, for textured materials; 0, 0 is the
+        image's top-left corner); submeshes: [(first_tri, tri_count, material name)], "" for the default
         material. Without submeshes the default material needs tri_palette or vertex_rgb."""
         positions, indices = list(positions), list(indices)
         nv, nt = len(positions) // 3, len(indices) // 3
@@ -92,9 +93,15 @@ class PackWriter:
                     raise PackError(f"{name}: submesh outside the triangles")
                 raw = material.encode()
                 parts += struct.pack("<IIH", first, count, len(raw)) + raw
-        flags = (1 if double_sided else 0) | (2 if submeshes else 0)
+        uvs = b""
+        if uv is not None:
+            uv = list(uv)
+            if len(uv) != 2 * nv:
+                raise PackError(f"{name}: uv needs one u, v per vertex")
+            uvs = struct.pack(f"<{2 * nv}f", *uv)
+        flags = (1 if double_sided else 0) | (2 if submeshes else 0) | (4 if uv is not None else 0)
         payload = (_MESH.pack(nv, nt, mode, flags, 0) + struct.pack(f"<{3 * nv}f", *positions)
-                   + struct.pack(f"<{3 * nt}H", *indices) + colors + parts)
+                   + struct.pack(f"<{3 * nt}H", *indices) + colors + parts + uvs)
         self.entries.append((MESH, name, payload))
 
     def add_rig(self, name, rig):

@@ -184,7 +184,7 @@ bool Engine::load_pack(const std::string& path, std::map<std::string, uint32_t>*
             }
             subs.push_back({sub.first_tri, sub.tri_count, material});
         }
-        uint32_t id = pipeline_.create_mesh(*dev_, {m.positions, m.indices, m.tri_palette, m.vertex_rgb, m.double_sided, subs}, error);
+        uint32_t id = pipeline_.create_mesh(*dev_, {m.positions, m.indices, m.tri_palette, m.vertex_rgb, m.double_sided, subs, m.uv}, error);
         if (!id) return fail(entry.name);
         loaded[entry.name] = id;
     }
@@ -278,15 +278,16 @@ void Engine::hud_image(uint32_t id, float x, float y, float w, float h, bool fit
 }
 
 void Engine::upload(uint32_t id, Tex& t, const Image& img) {
-    (void)id;
     if (t.handle) {
         dev_->destroy(t.handle);
         texture_bytes_ -= size_t(t.info.width) * t.info.height * 4;
     }
     t.handle = dev_->create_texture({img.width, img.height, rhi::Format::RGBA8,
-                                     t.info.linear ? rhi::Filter::Linear : rhi::Filter::Nearest, img.rgba.data()});
+                                     t.info.linear ? rhi::Filter::Linear : rhi::Filter::Nearest, img.rgba.data(),
+                                     t.info.repeat ? rhi::Wrap::Repeat : rhi::Wrap::Clamp});
     t.info.width = img.width, t.info.height = img.height, t.info.ready = true, t.info.error.clear();
     texture_bytes_ += size_t(img.width) * img.height * 4;
+    pipeline_.bind_texture(id, t.handle, t.info.linear);  // materials that name it
 }
 
 
@@ -364,8 +365,10 @@ void Engine::render_composite(Composite& c, const Image& photo) {
     }
     std::span<const render::HudCmd> hud = c.hud ? std::span<const render::HudCmd>(c.hud_cmds) : std::span<const render::HudCmd>();
     pipeline_.set_lens_image(ptex, photo.width, photo.height);
+    pipeline_.bind_texture(kLensTexture, ptex, true);
     pipeline_.render_into(*dev_, target, c.width, c.height, f, instances, hud);
     pipeline_.set_lens_image(lens_.image(), lens_.image_width(), lens_.image_height());
+    pipeline_.bind_texture(kLensTexture, lens_.image(), true);
     Image out;
     out.width = c.width, out.height = c.height;
     out.rgba.resize(size_t(c.width) * c.height * 4);
@@ -390,20 +393,20 @@ bool Engine::read_content(const std::string& path, std::vector<uint8_t>* out, st
     return true;
 }
 
-uint32_t Engine::load_texture(const std::vector<uint8_t>& bytes, int max_side, bool linear, std::string* error) {
+uint32_t Engine::load_texture(const std::vector<uint8_t>& bytes, int max_side, bool linear, std::string* error, bool repeat) {
     Image img;
     if (!decode_image(bytes.data(), bytes.size(), &img, error)) return 0;
     const uint32_t id = next_texture_++;
     Tex& t = textures_[id];
-    t.info.linear = linear;
+    t.info.linear = linear, t.info.repeat = repeat;
     upload(id, t, shrink(img, clamp_side(max_side)));
     return id;
 }
 
-uint32_t Engine::load_texture_async(std::vector<uint8_t> bytes, int max_side, bool linear) {
+uint32_t Engine::load_texture_async(std::vector<uint8_t> bytes, int max_side, bool linear, bool repeat) {
     const uint32_t id = next_texture_++;
     Tex& t = textures_[id];
-    t.info.linear = linear;
+    t.info.linear = linear, t.info.repeat = repeat;
     const int side = clamp_side(max_side);
     t.pending = std::async(std::launch::async, [bytes = std::move(bytes), side]() {
         Image img;
@@ -414,7 +417,7 @@ uint32_t Engine::load_texture_async(std::vector<uint8_t> bytes, int max_side, bo
     return id;
 }
 
-uint32_t Engine::create_texture(int width, int height, const uint8_t* rgba, bool linear, std::string* error) {
+uint32_t Engine::create_texture(int width, int height, const uint8_t* rgba, bool linear, std::string* error, bool repeat) {
     if (width <= 0 || height <= 0 || width > kMaxTextureSide || height > kMaxTextureSide) {
         *error = "texture size: 1.." + std::to_string(kMaxTextureSide) + " on each side";
         return 0;
@@ -424,7 +427,7 @@ uint32_t Engine::create_texture(int width, int height, const uint8_t* rgba, bool
     img.rgba.assign(rgba, rgba + size_t(width) * height * 4);
     const uint32_t id = next_texture_++;
     Tex& t = textures_[id];
-    t.info.linear = linear;
+    t.info.linear = linear, t.info.repeat = repeat;
     upload(id, t, img);
     return id;
 }
@@ -452,6 +455,7 @@ void Engine::destroy_texture(uint32_t id) {
         dev_->destroy(it->second.handle);
         texture_bytes_ -= size_t(it->second.info.width) * it->second.info.height * 4;
     }
+    pipeline_.unbind_texture(id);  // materials that name it draw white
     textures_.erase(it);
 }
 
@@ -469,6 +473,7 @@ void Engine::end_frame() {
             c.snapshot_pending = false;
         }
     pipeline_.set_lens_image(lens_.image(), lens_.image_width(), lens_.image_height());
+    pipeline_.bind_texture(kLensTexture, lens_.image(), true);  // materials showing the camera
     pipeline_.render(*dev_, frame_, instances_, hud_);
     const bool window = surface_->has_default_framebuffer();
     const int ow = window ? surface_->width() : cfg_.width, oh = window ? surface_->height() : cfg_.height;

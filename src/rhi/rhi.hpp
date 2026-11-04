@@ -45,11 +45,13 @@ struct BufferDesc {
 
 enum class Format { RGBA8, Depth24, Depth32F, R8, R16F, RGBA16F };  // 16F: uploaded from floats
 enum class Filter { Nearest, Linear };
+enum class Wrap { Clamp, Repeat };  // outside 0..1: the edge, or the texture again (tiling)
 struct TextureDesc {
     int width = 0, height = 0;
     Format format = Format::RGBA8;
     Filter filter = Filter::Nearest;
     const void* pixels = nullptr;  // RGBA8: top row first; R8: bytes; 16F: floats; may be null
+    Wrap wrap = Wrap::Clamp;
 };
 
 // A Linux dmabuf holding one 8-bit plane (DRM_FORMAT_R8), imported without a copy (camera frames).
@@ -148,7 +150,7 @@ public:
     // base instance, so a batch picks its slice with the offset).
     virtual void set_instance_buffer(BufferH b, size_t offset = 0) = 0;
     virtual void set_index_buffer(BufferH b) = 0;
-    // filter overrides the texture's own filter for this bind (GLES sampler objects).
+    // filter overrides the texture's own filter for this bind (GLES sampler objects); the wrap stays the texture's.
     virtual void set_texture(int slot, TextureH t) = 0;
     virtual void set_texture(int slot, TextureH t, Filter filter) = 0;
     virtual void set_uniforms(const void* data, size_t size) = 0;  // the "Params" block

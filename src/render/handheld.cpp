@@ -18,6 +18,7 @@ struct Vertex {
     float pos[3];
     float normal[3];
     uint8_t color[4];  // a = 0: palette index in r; a = 255: rgb
+    float uv[2];       // textured parts
 };
 
 struct HudVertex {
@@ -66,6 +67,12 @@ layout(location = 6) in vec4 a_extra;
 uniform sampler2D u_tex0;  // palette, 32x1
 out vec3 v_color;
 out float v_depth;
+#ifdef TEXTURED
+layout(location = 7) in vec2 a_uv;
+out vec2 v_uv;
+out float v_shade;  // the lighting, applied per pixel to the texture's colour
+out float v_k;      // fade and ground fog
+#endif
 void main() {
     vec4 p = vec4(a_pos, 1.0);
     vec3 w = vec3(dot(ROW0, p), dot(ROW1, p), dot(ROW2, p));
@@ -73,12 +80,16 @@ void main() {
     n = n / max(length(n), 1e-6);
     gl_Position = u_view_proj * vec4(w, 1.0);
     vec3 c;
+#ifdef TEXTURED
+    c = TINT >= 0.0 ? texelFetch(u_tex0, ivec2(int(TINT), 0), 0).rgb : a_color.rgb;  // what the texture is multiplied by
+#else
     if (a_color.a < 0.5) {
         int index = TINT >= 0.0 ? int(TINT) : int(a_color.r * 255.0 + 0.5);
         c = texelFetch(u_tex0, ivec2(index, 0), 0).rgb;
     } else {
         c = a_color.rgb;
     }
+#endif
     // Fade (and ground fog) blend towards the fog colour and flatten the lighting, so a
     // fade of 1 is exactly the fog colour.
     float k = FADE;
@@ -87,17 +98,28 @@ void main() {
         float ramp = min(length(w - u_eye.xyz) / u_ground.z, 1.0);
         k = max(k, u_ground.x * low * low * ramp);
     }
-    c = mix(c, u_fog_color.rgb, k);
     float ambient = u_light.w * (1.0 - k) + k;
     float diffuse = u_material.x * (1.0 - k);
-    vec3 lit = min(c * (ambient + diffuse * max(0.0, -dot(n, u_light.xyz))), vec3(1.0));
+    float shade = ambient + diffuse * max(0.0, -dot(n, u_light.xyz));
+#ifdef TEXTURED
+    v_color = c;
+    v_uv = a_uv;
+    v_shade = shade;
+    v_k = k;
+#else
+    c = mix(c, u_fog_color.rgb, k);
+    vec3 lit = min(c * shade, vec3(1.0));
     v_color = mix(lit, c, u_material.w);  // emissive: towards the unlit colour
+#endif
     v_depth = dot(w - u_eye.xyz, u_forward.xyz);
 }
 )"
 
 const char* kMeshVs = "#version 300 es\nprecision highp float;\n" MESH_PARAMS MESH_VS_BODY;
 const char* kMeshInstancedVs = "#version 300 es\n#define INSTANCED 1\nprecision highp float;\n" MESH_PARAMS MESH_VS_BODY;
+const char* kTexMeshVs = "#version 300 es\n#define TEXTURED 1\nprecision highp float;\n" MESH_PARAMS MESH_VS_BODY;
+const char* kTexMeshInstancedVs =
+    "#version 300 es\n#define TEXTURED 1\n#define INSTANCED 1\nprecision highp float;\n" MESH_PARAMS MESH_VS_BODY;
 
 struct InstanceData {  // attributes 3-6 of the instanced mesh pipeline
     float model[12];
@@ -116,6 +138,31 @@ void main() {
         c = mix(c, u_fog_color.rgb, t);
     }
     o_color = vec4(c, u_ground.w);
+}
+)";
+
+// Textured parts: the texture (slot 1; uv's v from the top, RHI textures have their first row at v = 1) times
+// the vertex stage's colour, then the same fade, lighting, emissive and fog as the untextured path.
+// u_fog.w = 1: cutout (alpha below a half isn't drawn).
+const char* kTexMeshFs = "#version 300 es\nprecision highp float;\n" MESH_PARAMS R"(
+uniform sampler2D u_tex1;
+in vec3 v_color;
+in float v_depth;
+in vec2 v_uv;
+in float v_shade;
+in float v_k;
+out vec4 o_color;
+void main() {
+    vec4 t = texture(u_tex1, vec2(v_uv.x, 1.0 - v_uv.y));
+    if (u_fog.w > 0.5 && t.a < 0.5) discard;
+    vec3 c = mix(t.rgb * v_color, u_fog_color.rgb, v_k);
+    c = mix(min(c * v_shade, vec3(1.0)), c, u_material.w);
+    if (u_fog.z > 0.0) {
+        float f = clamp((v_depth - u_fog.x) / max(u_fog.y - u_fog.x, 1e-3), 0.0, 1.0);
+        f = floor(f * u_fog.z + 0.5) / u_fog.z;
+        c = mix(c, u_fog_color.rgb, f);
+    }
+    o_color = vec4(c, u_ground.w * t.a);
 }
 )";
 
@@ -288,11 +335,46 @@ bool HandheldPipeline::init(rhi::Device& dev, int width, int height, std::string
     inst.name = "mesh-instanced-two-sided";
     if (instanced_) instanced_two_sided_ = dev.create_pipeline(inst, error);
 
+    // The textured six: the same states, the TEXTURED shaders, a uv attribute (location 7).
+    rhi::PipelineDesc tex = mesh;  // blend, culled (as left above): start from opaque
+    tex.vertex_source = kTexMeshVs;
+    tex.fragment_source = kTexMeshFs;
+    tex.attribs[3] = {7, rhi::AttribType::Float2, offsetof(Vertex, uv)};
+    tex.attrib_count = 4;
+    tex.alpha_blend = false;
+    tex.depth_write = true;
+    tex.cull_back = true;
+    tex.name = "tex-mesh";
+    if (instanced_two_sided_) tex_mesh_ = dev.create_pipeline(tex, error);
+    tex.cull_back = false;
+    tex.name = "tex-mesh-two-sided";
+    if (tex_mesh_) tex_mesh_two_sided_ = dev.create_pipeline(tex, error);
+    tex.alpha_blend = true;
+    tex.depth_write = false;
+    tex.name = "tex-blend-two-sided";
+    if (tex_mesh_two_sided_) tex_blend_two_sided_ = dev.create_pipeline(tex, error);
+    tex.cull_back = true;
+    tex.name = "tex-blend";
+    if (tex_blend_two_sided_) tex_blend_ = dev.create_pipeline(tex, error);
+    rhi::PipelineDesc tex_inst = inst;
+    tex_inst.vertex_source = kTexMeshInstancedVs;
+    tex_inst.fragment_source = kTexMeshFs;
+    tex_inst.attribs[7] = {7, rhi::AttribType::Float2, offsetof(Vertex, uv)};
+    tex_inst.attrib_count = 8;
+    tex_inst.cull_back = true;
+    tex_inst.name = "tex-instanced";
+    if (tex_blend_) tex_instanced_ = dev.create_pipeline(tex_inst, error);
+    tex_inst.cull_back = false;
+    tex_inst.name = "tex-instanced-two-sided";
+    if (tex_instanced_) tex_instanced_two_sided_ = dev.create_pipeline(tex_inst, error);
+    const uint8_t white[4] = {255, 255, 255, 255};
+    white_ = dev.create_texture({1, 1, rhi::Format::RGBA8, rhi::Filter::Nearest, white});
+
     rhi::PipelineDesc sky;
     sky.vertex_source = FULLSCREEN_VS;
     sky.fragment_source = kSkyFs;
     sky.name = "sky";
-    if (instanced_two_sided_) sky_ = dev.create_pipeline(sky, error);
+    if (tex_instanced_two_sided_) sky_ = dev.create_pipeline(sky, error);
 
     rhi::PipelineDesc overlay;
     overlay.vertex_source = FULLSCREEN_VS;
@@ -330,13 +412,24 @@ void HandheldPipeline::shutdown(rhi::Device& dev) {
     if (hud_vb_) dev.destroy(hud_vb_);
     if (instance_vb_) dev.destroy(instance_vb_);
     for (rhi::PipelineH p : {sky_, mesh_, mesh_two_sided_, blend_, blend_two_sided_, overlay_, hud_, instanced_,
-                             instanced_two_sided_, lens_bg_, hud_image_})
+                             instanced_two_sided_, lens_bg_, hud_image_, tex_mesh_, tex_mesh_two_sided_, tex_blend_,
+                             tex_blend_two_sided_, tex_instanced_, tex_instanced_two_sided_})
         if (p) dev.destroy(p);
     lens_ = {};
     if (target_) dev.destroy(target_);
-    for (rhi::TextureH t : {color_, depth_, palette_, font_})
+    bound_textures_.clear();
+    for (rhi::TextureH t : {color_, depth_, palette_, font_, white_})
         if (t) dev.destroy(t);
     *this = HandheldPipeline{};
+}
+
+void HandheldPipeline::bind_texture(uint32_t id, rhi::TextureH texture, bool linear) {
+    for (BoundTexture& b : bound_textures_)
+        if (b.id == id) {
+            b.texture = texture, b.linear = linear;
+            return;
+        }
+    bound_textures_.push_back({id, texture, linear});
 }
 
 bool HandheldPipeline::check_material(const Material& m, std::string* error) {
@@ -378,6 +471,8 @@ bool HandheldPipeline::build(rhi::Device& dev, Mesh& m, const MeshDesc& d, std::
         return fail("positions must be xyz triples and indices whole triangles");
     if (has_palette && d.tri_palette.size() != ntris) return fail("tri_palette needs one entry per triangle");
     if (has_rgb && d.vertex_rgb.size() != nverts * 3) return fail("vertex_rgb needs one RGB per vertex");
+    const bool has_uv = !d.uv.empty();
+    if (has_uv && d.uv.size() != nverts * 2) return fail("uv needs one u, v per vertex");
     for (uint16_t i : d.indices)
         if (i >= nverts) return fail("index out of range");
 
@@ -398,6 +493,7 @@ bool HandheldPipeline::build(rhi::Device& dev, Mesh& m, const MeshDesc& d, std::
         if (mat.color == ColorSource::Palette && !has_palette && mat.palette_index == 0)
             return fail("a palette material without palette_index needs the mesh's tri_palette");
         if (mat.color == ColorSource::Vertex && !has_rgb) return fail("a vertex-colour material needs the mesh's vertex_rgb");
+        if (mat.color == ColorSource::Texture && !has_uv) return fail("a textured material needs the mesh's uv");
         baked.push_back(mat);
     }
 
@@ -426,7 +522,10 @@ bool HandheldPipeline::build(rhi::Device& dev, Mesh& m, const MeshDesc& d, std::
                 n = nl > 1e-12f ? n / nl : glm::vec3(0, 1, 0);
                 std::memcpy(v.pos, glm::value_ptr(p), sizeof v.pos);
                 std::memcpy(v.normal, glm::value_ptr(n), sizeof v.normal);
-                if (mat.color == ColorSource::Palette) {
+                if (has_uv) std::memcpy(v.uv, &d.uv[size_t(f[k]) * 2], sizeof v.uv);
+                if (mat.color == ColorSource::Texture) {
+                    v.color[0] = v.color[1] = v.color[2] = v.color[3] = 255;  // the texture as it is (tints multiply)
+                } else if (mat.color == ColorSource::Palette) {
                     v.color[0] = uint8_t((mat.palette_index ? mat.palette_index : d.tri_palette[t]) % kPaletteSize);
                 } else {
                     std::memcpy(v.color, &d.vertex_rgb[size_t(f[k]) * 3], 3);
@@ -577,14 +676,28 @@ void HandheldPipeline::render_into(rhi::Device& dev, rhi::TargetH target, int W,
 
     rhi::PipelineH bound;
     dev.set_texture(0, palette_);
+    // A textured part's texture on slot 1 (white while it isn't there); u_fog.w: cutout.
+    auto bind_material_texture = [&](const Material& mat) {
+        p.fog[3] = mat.alpha_mode == AlphaMode::Cutout ? 1.0f : 0.0f;
+        if (mat.color != ColorSource::Texture) return;
+        for (const BoundTexture& b : bound_textures_)
+            if (b.id == mat.texture && b.texture) {
+                dev.set_texture(1, b.texture, b.linear ? rhi::Filter::Linear : rhi::Filter::Nearest);
+                return;
+            }
+        dev.set_texture(1, white_);
+    };
     auto draw_part = [&](const Mesh& m, const Part& part, const Instance& in, bool blend) {
         const Material& mat = materials_[part.material];
         const bool two_sided = m.double_sided || mat.double_sided;
-        rhi::PipelineH want = blend ? (two_sided ? blend_two_sided_ : blend_) : (two_sided ? mesh_two_sided_ : mesh_);
+        const bool textured = mat.color == ColorSource::Texture;
+        rhi::PipelineH want = textured ? (blend ? (two_sided ? tex_blend_two_sided_ : tex_blend_) : (two_sided ? tex_mesh_two_sided_ : tex_mesh_))
+                                       : (blend ? (two_sided ? blend_two_sided_ : blend_) : (two_sided ? mesh_two_sided_ : mesh_));
         if (want != bound) {
             dev.set_pipeline(want);
             bound = want;
         }
+        bind_material_texture(mat);
         std::memcpy(p.model, in.model.data(), sizeof p.model);
         const Light light = in.light == Light::Material ? mat.light : in.light;
         const bool unlit = light == Light::Unlit || mat.shading == Shading::Unlit;
@@ -681,11 +794,14 @@ void HandheldPipeline::render_into(rhi::Device& dev, rhi::TargetH target, int W,
         for (const Part& part : m.parts) {
             const Material& mat = materials_[part.material];
             if (mat.alpha_mode == AlphaMode::Blend) continue;
-            rhi::PipelineH want = m.double_sided || mat.double_sided ? instanced_two_sided_ : instanced_;
+            const bool two_sided = m.double_sided || mat.double_sided;
+            rhi::PipelineH want = mat.color == ColorSource::Texture ? (two_sided ? tex_instanced_two_sided_ : tex_instanced_)
+                                                                    : (two_sided ? instanced_two_sided_ : instanced_);
             if (want != bound) {
                 dev.set_pipeline(want);
                 bound = want;
             }
+            bind_material_texture(mat);
             const Light light = g.light == Light::Material ? mat.light : g.light;
             const bool unlit = light == Light::Unlit || mat.shading == Shading::Unlit;
             const DirLight& l = light == Light::Character ? f.character : f.sun;

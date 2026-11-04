@@ -1,6 +1,6 @@
 # 纹理
 
-> **规划定于 2026-11-04**（用户确认：按 T1 → T2 → T3 的顺序，默认 `nearest` 过滤）。**T1 已经做了**（main 上，还没发布）；T2、T3 是计划，
+> **规划定于 2026-11-04**（用户确认：按 T1 → T2 → T3 的顺序，默认 `nearest` 过滤）。**T1、T2 已经做了**（main 上，还没发布）；T3 是计划，
 > 做的时候按这里来，改了计划就改这份文档。
 
 引擎原来没有纹理：材质只有调色板色和顶点色，网格没有 UV，HUD 只能画矩形、文字和相机画面。下面把用到纹理的几件事放在一起规划：
@@ -35,14 +35,20 @@ e.hud_image(tex, x, y, w, h, fit=False, color=0xFFFFFFFF, src=None)   # src=(u0,
 `hud_lens(...)` 就是 `hud_image(e.lens.texture, ...)`（没有画面时画黑框）。相册、照片预览、UI 图标、简单的精灵都靠它。
 例子：`apps/camera/src/album.py`（相机测试卡带的相册：缩略图、全屏看、删除）。测试：`tests/test_textures.py`。
 
-## 3. 带纹理的材质（T2，计划）
+## 3. 带纹理的材质（T2，已做）
 
-- **网格加 UV**：`ae.Mesh(..., uv=array('f', ...).tobytes())`，每个顶点两个数；资源包的网格加一段 UV（`formats.md`，只加不改：旧包照常读）。
-- **材质**：`ae.Material(color=ae.ColorSource.TEXTURE, texture=tex)`；颜色 = 纹理 × 光照（和现在的调色板色一样受太阳、角色光、雾影响）。
-  `tint` 对纹理是乘一个调色板色（把一张灰度图染成不同颜色，省纹理）。
+- **网格加 UV**：`ae.Mesh(..., uv=array('f', ...).tobytes())`，每个顶点两个数，(0, 0) 是图的左上角；资源包的网格加一段 UV（`formats.md`：
+  放在最后，旧引擎读新包时跳过它）。`alia_kit` 有带 UV 的 `quad`、`textured_box`，`plane(..., tiles=)`。
+- **材质**：`ae.Material(color=ae.ColorSource.TEXTURE, texture=tex)`；颜色 = 纹理 × 光照（和调色板色一样受太阳、角色光、雾、淡出影响；
+  光照还是按顶点算，纹理按像素乘上去）。`tint` 对纹理是乘一个调色板色（把一张灰度图染成不同颜色，省纹理）。
+  `update_material` 换纹理对已经建好的网格也生效；纹理还没加载好或者已经 `destroy()`：画成白色。
+- **平铺**：纹理的 `wrap="repeat"`（`load_texture`、`create_texture`），UV 超过 0..1 就重复（地面、墙）；默认 `"clamp"`。
+- **半透明**：`BLEND` 时纹理的 alpha 乘 `opacity`。
 - **镂空**：`alpha_mode=CUTOUT`（纹理的 alpha 低于一半就不画）：树叶、栅栏、头发。不排序、照常合批，比 `BLEND` 便宜。
 - **合批**：同一个网格、同一个材质（所以同一张纹理）的实例照常一次 instanced draw；纹理多了 draw 就多，图集（第三步）把小图合成一张。
-- **相机画面贴在物体上**：材质的 `texture=e.lens.texture`（电视屏幕、魔镜）。
+- **相机画面贴在物体上**：材质的 `texture=e.lens.texture`（电视屏幕、魔镜）；照片模式里换成那张全分辨率照片。
+- **资源包**：材质可以是 `colour 2`（texture）、`alpha mode 2`（cutout），但纹理本身还不在包里：游戏加载后设 `texture`（T3 按名字引用）。
+- 例子：sandbox 的 TEXTURES 展台（箱子、染色、镂空的树丛、平铺的地面、每帧更新的屏幕）。测试：`tests/test_textured_materials.py`。
 
 ## 4. 资源包里的纹理、压缩、图集（T3，计划）
 
@@ -61,7 +67,7 @@ e.hud_image(tex, x, y, w, h, fit=False, color=0xFFFFFFFF, src=None)   # src=(u0,
 | 步 | 内容 | 用它的 |
 |---|---|---|
 | T1 ✅ | 纹理对象（PNG / JPEG、`create_texture`、异步加载）、`hud_image`、`e.lens.texture` | 相机测试卡带的相册、照片预览、UI 图标 |
-| T2 | 网格 UV、`TEXTURE` 材质、`CUTOUT`、相机画面贴在物体上 | 3D 游戏的贴图、树叶、电视屏幕 |
+| T2 ✅ | 网格 UV、`TEXTURE` 材质、`CUTOUT`、平铺、相机画面贴在物体上 | 3D 游戏的贴图、树叶、电视屏幕 |
 | T3 | 资源包里的纹理、ETC2、图集；公告板粒子 | 正式游戏的资源、E7 的 2D |
 
 每一步都在 main 上，只加不改；发布时（和其他库一起）写进 api.md。

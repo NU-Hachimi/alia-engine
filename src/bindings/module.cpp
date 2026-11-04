@@ -39,6 +39,7 @@ struct Mesh {
     std::optional<nb::bytes> tri_palette, vertex_rgb;
     bool double_sided = false;
     std::vector<render::Submesh> submeshes;
+    std::optional<nb::bytes> uv;
 
     render::MeshDesc desc() const {
         render::MeshDesc d;
@@ -48,6 +49,7 @@ struct Mesh {
         if (vertex_rgb) d.vertex_rgb = view<uint8_t>(*vertex_rgb, "vertex_rgb");
         d.double_sided = double_sided;
         d.submeshes = submeshes;
+        if (uv) d.uv = view<float>(*uv, "uv");
         return d;
     }
 };
@@ -378,6 +380,18 @@ bool linear_filter(const std::string& f) {
     return f == "linear";
 }
 
+bool repeat_wrap(const std::string& w) {
+    if (w != "clamp" && w != "repeat") throw nb::value_error("wrap: 'clamp' or 'repeat'");
+    return w == "repeat";
+}
+
+// A material's texture: a Texture, its id, or None (0: white).
+uint32_t texture_id(nb::handle t) {
+    if (t.is_none()) return 0;
+    if (nb::isinstance<PyTexture>(t)) return nb::cast<PyTexture&>(t).id;
+    return nb::cast<uint32_t>(t);
+}
+
 struct PyPhoto {
     nb::object engine_obj;
     uint32_t id;
@@ -436,10 +450,12 @@ NB_MODULE(alia_engine, m) {
         .value("UNLIT", render::Shading::Unlit);
     nb::enum_<render::ColorSource>(m, "ColorSource")
         .value("PALETTE", render::ColorSource::Palette)
-        .value("VERTEX", render::ColorSource::Vertex);
+        .value("VERTEX", render::ColorSource::Vertex)
+        .value("TEXTURE", render::ColorSource::Texture);
     nb::enum_<render::AlphaMode>(m, "AlphaMode")
         .value("OPAQUE", render::AlphaMode::Opaque)
-        .value("BLEND", render::AlphaMode::Blend);
+        .value("BLEND", render::AlphaMode::Blend)
+        .value("CUTOUT", render::AlphaMode::Cutout);
 
     nb::class_<render::Material>(m, "Material",
                                  "The handheld shading model (docs/api.md §2). shading, color and palette_index are "
@@ -448,14 +464,15 @@ NB_MODULE(alia_engine, m) {
             "__init__",
             [](render::Material* self, render::Shading shading, render::ColorSource color, uint8_t palette_index,
                render::Light light, float ambient, float diffuse, float emissive, render::AlphaMode alpha_mode,
-               float opacity, bool double_sided, bool fog, bool ground_fog) {
+               float opacity, bool double_sided, bool fog, bool ground_fog, nb::handle texture) {
                 new (self) render::Material{shading, color,      palette_index, light,        ambient, diffuse,
-                                            emissive, alpha_mode, opacity,      double_sided, fog,     ground_fog};
+                                            emissive, alpha_mode, opacity,      double_sided, fog,     ground_fog,
+                                            texture_id(texture)};
             },
             "shading"_a = render::Shading::Flat, "color"_a = render::ColorSource::Palette, "palette_index"_a = 0,
             "light"_a = render::Light::Sun, "ambient"_a = -1.0f, "diffuse"_a = -1.0f, "emissive"_a = 0.0f,
             "alpha_mode"_a = render::AlphaMode::Opaque, "opacity"_a = 1.0f, "double_sided"_a = false, "fog"_a = true,
-            "ground_fog"_a = true)
+            "ground_fog"_a = true, "texture"_a = nb::none())
         .def_rw("shading", &render::Material::shading)
         .def_rw("color", &render::Material::color)
         .def_rw("palette_index", &render::Material::palette_index)
@@ -467,7 +484,12 @@ NB_MODULE(alia_engine, m) {
         .def_rw("opacity", &render::Material::opacity)
         .def_rw("double_sided", &render::Material::double_sided)
         .def_rw("fog", &render::Material::fog)
-        .def_rw("ground_fog", &render::Material::ground_fog);
+        .def_rw("ground_fog", &render::Material::ground_fog)
+        .def_prop_rw(
+            "texture", [](render::Material& mat) { return mat.texture; },
+            [](render::Material& mat, nb::handle t) { mat.texture = texture_id(t); },
+            "color=TEXTURE: a Texture (e.load_texture, e.lens.texture; docs/textures.md), or None: white. "
+            "update_material() changes it for meshes already built.");
 
     nb::class_<platform::InputState>(m, "Input")
         .def_ro("gamepad", &platform::InputState::gamepad)
@@ -524,17 +546,19 @@ NB_MODULE(alia_engine, m) {
                      "Geometry: positions (float32 xyz), indices (uint16 triangles, CCW front faces), the colours "
                      "materials can use (tri_palette: uint8 per triangle; vertex_rgb: 3 x uint8 per vertex) and "
                      "submeshes [(first_tri, tri_count, material id)]. Without submeshes: one part with the "
-                     "default material (tri_palette -> flat palette colours, else smooth vertex colours).")
+                     "default material (tri_palette -> flat palette colours, else smooth vertex colours). uv: float32 "
+                     "u, v per vertex for textured materials (0, 0: the image's top-left corner; docs/textures.md).")
         .def(
             "__init__",
             [](Mesh* self, nb::bytes positions, nb::bytes indices, std::optional<nb::bytes> tri_palette,
                std::optional<nb::bytes> vertex_rgb, bool double_sided,
-               const std::vector<std::tuple<uint32_t, uint32_t, uint32_t>>& submeshes) {
-                new (self) Mesh{positions, indices, tri_palette, vertex_rgb, double_sided, {}};
+               const std::vector<std::tuple<uint32_t, uint32_t, uint32_t>>& submeshes, std::optional<nb::bytes> uv) {
+                new (self) Mesh{positions, indices, tri_palette, vertex_rgb, double_sided, {}, uv};
                 for (auto [first, count, material] : submeshes) self->submeshes.push_back({first, count, material});
             },
             "positions"_a, "indices"_a, "tri_palette"_a = nb::none(), "vertex_rgb"_a = nb::none(),
-            "double_sided"_a = false, "submeshes"_a = std::vector<std::tuple<uint32_t, uint32_t, uint32_t>>{});
+            "double_sided"_a = false, "submeshes"_a = std::vector<std::tuple<uint32_t, uint32_t, uint32_t>>{},
+            "uv"_a = nb::none());
 
     m.def(
         "run",
@@ -1610,34 +1634,38 @@ NB_MODULE(alia_engine, m) {
              "x"_a, "y"_a, "text"_a, "color"_a = 0xFFFFFFFFu, "scale"_a = 1.0f, "shadow"_a = 0u,
              "5x7 text (ASCII), 6 * scale pixels per character; shadow: 0xRRGGBBAA drop shadow, 0 for none.")
         .def("load_texture",
-             [](nb::object self, nb::handle source, int max_size, const std::string& filter) {
+             [](nb::object self, nb::handle source, int max_size, const std::string& filter, const std::string& wrap) {
                  PyEngine& e = nb::cast<PyEngine&>(self);
                  std::string err;
-                 uint32_t id = e.get().load_texture(image_source(source), max_size, linear_filter(filter), &err);
+                 uint32_t id = e.get().load_texture(image_source(source), max_size, linear_filter(filter), &err, repeat_wrap(wrap));
                  if (!id) throw std::runtime_error("alia_engine: " + err);
                  return PyTexture{self, id};
              },
-             "source"_a, "max_size"_a = 2048, "filter"_a = "nearest",
+             "source"_a, "max_size"_a = 2048, "filter"_a = "nearest", "wrap"_a = "clamp",
              "A PNG or JPEG: a path in the cart's content/, or bytes (ae.save.read(...)). Bigger than max_size "
-             "(the longer side, at most 2048): scaled down. filter: 'nearest' (sharp pixels) or 'linear' (photos).")
+             "(the longer side, at most 2048): scaled down. filter: 'nearest' (sharp pixels) or 'linear' (photos); wrap: "
+             "'clamp' or 'repeat' (tiles on a mesh: ground, walls).")
         .def("load_texture_async",
-             [](nb::object self, nb::handle source, int max_size, const std::string& filter) {
+             [](nb::object self, nb::handle source, int max_size, const std::string& filter, const std::string& wrap) {
                  PyEngine& e = nb::cast<PyEngine&>(self);
-                 return PyTexture{self, e.get().load_texture_async(image_source(source), max_size, linear_filter(filter))};
+                 return PyTexture{self, e.get().load_texture_async(image_source(source), max_size, linear_filter(filter),
+                                                                   repeat_wrap(wrap))};
              },
-             "source"_a, "max_size"_a = 2048, "filter"_a = "nearest",
+             "source"_a, "max_size"_a = 2048, "filter"_a = "nearest", "wrap"_a = "clamp",
              "As load_texture, decoded on another thread (a big photo takes about a second on the handheld): "
              "the Texture is .done after a few frames, then .ready or .error.")
         .def("create_texture",
-             [](nb::object self, int w, int h, const nb::bytes& rgba, const std::string& filter) {
+             [](nb::object self, int w, int h, const nb::bytes& rgba, const std::string& filter, const std::string& wrap) {
                  PyEngine& e = nb::cast<PyEngine&>(self);
                  if (rgba.size() != size_t(w) * size_t(h) * 4) throw nb::value_error("rgba: width * height * 4 bytes");
                  std::string err;
-                 uint32_t id = e.get().create_texture(w, h, reinterpret_cast<const uint8_t*>(rgba.data()), linear_filter(filter), &err);
+                 uint32_t id = e.get().create_texture(w, h, reinterpret_cast<const uint8_t*>(rgba.data()), linear_filter(filter),
+                                                      &err, repeat_wrap(wrap));
                  if (!id) throw nb::value_error(err.c_str());
                  return PyTexture{self, id};
              },
-             "width"_a, "height"_a, "rgba"_a, "filter"_a = "nearest", "A texture from RGBA8 bytes, top row first.")
+             "width"_a, "height"_a, "rgba"_a, "filter"_a = "nearest", "wrap"_a = "clamp",
+             "A texture from RGBA8 bytes, top row first. wrap 'repeat': it tiles where a mesh's uv goes past 0..1.")
         .def("hud_image",
              [](PyEngine& e, PyTexture& t, float x, float y, float w, float h, bool fit, uint32_t color,
                 std::optional<std::array<float, 4>> src) {

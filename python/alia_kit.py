@@ -459,14 +459,15 @@ class Pool:
 
 # ---- shapes: meshes to pass to e.create_mesh -----------------------------------------------------------
 
-def _mesh(positions, indices, colours, material=None):
+def _mesh(positions, indices, colours, material=None, uv=None):
     """An alia_engine.Mesh: one palette index per triangle (flat-shaded with the default material), or one part in
-    `material` (e.g. a SMOOTH or emissive material with its own palette_index)."""
+    `material` (e.g. a SMOOTH or emissive material with its own palette_index, or a textured one: then uv)."""
     import alia_engine as ae
     pos, idx = array("f", positions).tobytes(), array("H", indices).tobytes()
+    uvs = array("f", uv).tobytes() if uv is not None else None
     if material is not None:
-        return ae.Mesh(pos, idx, submeshes=[(0, len(indices) // 3, material)])
-    return ae.Mesh(pos, idx, tri_palette=bytes(colours))
+        return ae.Mesh(pos, idx, tri_palette=bytes(colours), submeshes=[(0, len(indices) // 3, material)], uv=uvs)
+    return ae.Mesh(pos, idx, tri_palette=bytes(colours), uv=uvs)
 
 
 def box(sx=1.0, sy=1.0, sz=1.0, colour=1, centre=(0.0, 0.0, 0.0), material=None):
@@ -515,20 +516,55 @@ def cylinder(radius=0.5, height=1.0, colour=1, segments=10, cap=None, material=N
     return _mesh(p, i, cols, material)
 
 
-def plane(width=10.0, depth=10.0, colour=20, divisions=1, checker=None, material=None):
-    """A flat ground at y 0, centred, facing up; divisions x divisions cells (checker: the other cells' colour)."""
-    p, i, cols = [], [], []
+def plane(width=10.0, depth=10.0, colour=20, divisions=1, checker=None, material=None, tiles=None):
+    """A flat ground at y 0, centred, facing up; divisions x divisions cells (checker: the other cells' colour).
+    tiles: uv for a textured material, the texture this many times across (a number, or (across x, across z);
+    the texture's wrap must be 'repeat' for more than 1)."""
+    p, i, cols, uv = [], [], [], []
     n = max(1, divisions)
+    tx, tz = (tiles, tiles) if isinstance(tiles, (int, float)) else (tiles or (1, 1))
     for j in range(n + 1):
         for k in range(n + 1):
             p += [-width / 2 + width * k / n, 0.0, -depth / 2 + depth * j / n]
+            uv += [tx * k / n, tz * (n - j) / n]
     for j in range(n):
         for k in range(n):
             a = j * (n + 1) + k
             i += [a, a + n + 1, a + 1, a + 1, a + n + 1, a + n + 2]
             c = checker if checker is not None and (j + k) % 2 else colour
             cols += [c, c]
-    return _mesh(p, i, cols, material)
+    return _mesh(p, i, cols, material, uv if tiles is not None else None)
+
+
+def quad(width=1.0, height=1.0, material=None, centre=(0.0, 0.0, 0.0), tiles=1, colour=1):
+    """An upright rectangle facing -Z (towards a camera at yaw 0 in front of it), the texture the right way up on it:
+    signs, screens, pictures, foliage cards (a CUTOUT material, double-sided). tiles: as plane's."""
+    w, h = width / 2, height / 2
+    cx, cy, cz = centre
+    tx, ty = (tiles, tiles) if isinstance(tiles, (int, float)) else tiles
+    p = [cx + w, cy - h, cz, cx - w, cy - h, cz, cx - w, cy + h, cz, cx + w, cy + h, cz]  # seen from -Z: +X is on the left
+    uv = [0, ty, tx, ty, tx, 0, 0, 0]
+    return _mesh(p, [0, 1, 2, 0, 2, 3], [colour, colour], material, uv)
+
+
+def textured_box(sx=1.0, sy=1.0, sz=1.0, material=None, centre=(0.0, 0.0, 0.0), tiles=1, colour=1):
+    """A box like box(), each face with the whole texture on it, the right way up on the sides (crates, blocks);
+    24 vertices, so faces don't share uv."""
+    hx, hy, hz = sx / 2, sy / 2, sz / 2
+    tx, ty = (tiles, tiles) if isinstance(tiles, (int, float)) else tiles
+    # per face: the outward axis and the two in-plane axes (right, up as seen from outside)
+    faces = [((0, 0, -1), (-1, 0, 0), (0, 1, 0)), ((0, 0, 1), (1, 0, 0), (0, 1, 0)),
+             ((0, -1, 0), (-1, 0, 0), (0, 0, -1)), ((0, 1, 0), (-1, 0, 0), (0, 0, 1)),
+             ((1, 0, 0), (0, 0, -1), (0, 1, 0)), ((-1, 0, 0), (0, 0, 1), (0, 1, 0))]
+    p, i, uv = [], [], []
+    for n, r, u in faces:
+        base = len(p) // 3
+        for a, b, cu, cv in ((-1, -1, 0, ty), (1, -1, tx, ty), (1, 1, tx, 0), (-1, 1, 0, 0)):
+            v = [n[k] + a * r[k] + b * u[k] for k in range(3)]
+            p += [centre[0] + v[0] * hx, centre[1] + v[1] * hy, centre[2] + v[2] * hz]
+            uv += [cu, cv]
+        i += [base, base + 1, base + 2, base, base + 2, base + 3]
+    return _mesh(p, i, [colour] * 12, material, uv)
 
 
 # ---- terrain ------------------------------------------------------------------------------------------

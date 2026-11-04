@@ -28,7 +28,7 @@ precision highp int;
 precision highp sampler2D;
 layout(std140) uniform Params {
     ivec4 u_raw;   // xy: the raw frame's size; zw: where red sits in the 2x2 cell
-    ivec4 u_out;   // xy: the image's size; z: turn
+    ivec4 u_out;   // xy: the image's size; z: turn; w: 1 = one colour per 2x2 cell (the image at half the frame or less)
     vec4 u_wb;     // xy: white balance (red, blue); z: black level 0..1
     vec4 u_ccm0, u_ccm1, u_ccm2;  // the colour matrix, rows
 };
@@ -48,7 +48,9 @@ void main() {
     vec2 uv = vec2(gl_FragCoord.x / float(u_out.x), 1.0 - gl_FragCoord.y / float(u_out.y));
     ivec2 p = alia_camera_pixel(uv, u_raw.xy, u_out.z);
     mat3 ccm = transpose(mat3(u_ccm0.xyz, u_ccm1.xyz, u_ccm2.xyz));
-    o_color = vec4(alia_camera_rgb(u_tex0, u_raw.xy, u_raw.zw, u_wb.z, u_wb.xy, u_tex1, u_tex2, ccm, p), 1.0);
+    vec3 c = u_out.w == 1 ? alia_camera_rgb_cell(u_tex0, u_raw.xy, u_raw.zw, u_wb.z, u_wb.xy, u_tex1, u_tex2, ccm, p / 2)
+                          : alia_camera_rgb(u_tex0, u_raw.xy, u_raw.zw, u_wb.z, u_wb.xy, u_tex1, u_tex2, ccm, p);
+    o_color = vec4(c, 1.0);
 }
 )";
 
@@ -284,6 +286,10 @@ void Lens::develop(rhi::Device& dev, int index, uint32_t params) {
     u.raw[2] = std::strncmp(order, "GRBG", 4) == 0 || std::strncmp(order, "BGGR", 4) == 0 ? 1 : 0;
     u.raw[3] = std::strncmp(order, "GBRG", 4) == 0 || std::strncmp(order, "BGGR", 4) == 0 ? 1 : 0;
     u.out[0] = out_w_, u.out[1] = out_h_, u.out[2] = int(m.turn);
+    // At half the frame's size or less every output pixel covers a whole Bayer cell: the SDK's cheaper path
+    // (4 reads, no interpolation: less than half the GPU time; the handheld's 640x481 from 1640x1232).
+    const int raw_w = m.turn == 90 ? int(m.height) : int(m.width);
+    u.out[3] = out_w_ * 2 <= raw_w ? 1 : 0;
     u.wb[0] = c.current.wb_red, u.wb[1] = c.current.wb_blue, u.wb[2] = float(m.black_level) / 255.0f;
     static const float identity[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     const float* ccm = p ? p->ccm : identity;

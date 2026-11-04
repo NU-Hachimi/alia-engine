@@ -24,6 +24,7 @@ struct GlTexture {
     int width, height;
     Format format;
     EGLImageKHR image = EGL_NO_IMAGE_KHR;  // an imported dmabuf
+    Wrap wrap = Wrap::Clamp;
 };
 
 // Data textures (rhi.hpp): internal format, format, type.
@@ -73,13 +74,13 @@ public:
         glBufferData(GL_UNIFORM_BUFFER, kUboSize, nullptr, GL_DYNAMIC_DRAW);
         glGenVertexArrays(1, &vao_);
         glBindVertexArray(vao_);
-        glGenSamplers(2, samplers_);
-        for (int i = 0; i < 2; i++) {
-            GLint f = i == 0 ? GL_NEAREST : GL_LINEAR;
+        glGenSamplers(4, samplers_);
+        for (int i = 0; i < 4; i++) {  // [filter + 2 * wrap]
+            GLint f = i % 2 == 0 ? GL_NEAREST : GL_LINEAR, w = i < 2 ? GL_CLAMP_TO_EDGE : GL_REPEAT;
             glSamplerParameteri(samplers_[i], GL_TEXTURE_MIN_FILTER, f);
             glSamplerParameteri(samplers_[i], GL_TEXTURE_MAG_FILTER, f);
-            glSamplerParameteri(samplers_[i], GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glSamplerParameteri(samplers_[i], GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glSamplerParameteri(samplers_[i], GL_TEXTURE_WRAP_S, w);
+            glSamplerParameteri(samplers_[i], GL_TEXTURE_WRAP_T, w);
         }
     }
 
@@ -94,7 +95,7 @@ public:
         for (auto& [k, p] : pipelines_) glDeleteProgram(p.program);
         glDeleteBuffers(1, &ubo_);
         glDeleteVertexArrays(1, &vao_);
-        glDeleteSamplers(2, samplers_);
+        glDeleteSamplers(4, samplers_);
     }
 
     BufferH create_buffer(const BufferDesc& d) override {
@@ -115,13 +116,15 @@ public:
 
     TextureH create_texture(const TextureDesc& d) override {
         GlTexture t{0, d.width, d.height, d.format};
+        t.wrap = d.wrap;
         glGenTextures(1, &t.id);
         glBindTexture(GL_TEXTURE_2D, t.id);
         GLint filter = d.filter == Filter::Linear ? GL_LINEAR : GL_NEAREST;
+        GLint wrap = d.wrap == Wrap::Repeat ? GL_REPEAT : GL_CLAMP_TO_EDGE;
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
         switch (d.format) {
         case Format::RGBA8:
             if (d.pixels) {
@@ -390,9 +393,10 @@ public:
     }
 
     void set_texture(int slot, TextureH h, Filter filter) override {
+        const GlTexture& t = textures_.at(h.id);
         glActiveTexture(GLenum(GL_TEXTURE0 + slot));
-        glBindTexture(GL_TEXTURE_2D, textures_.at(h.id).id);
-        glBindSampler(GLuint(slot), samplers_[filter == Filter::Linear ? 1 : 0]);
+        glBindTexture(GL_TEXTURE_2D, t.id);
+        glBindSampler(GLuint(slot), samplers_[(filter == Filter::Linear ? 1 : 0) + (t.wrap == Wrap::Repeat ? 2 : 0)]);
     }
 
     void set_uniforms(const void* data, size_t size) override {
@@ -490,7 +494,7 @@ private:
     std::unordered_map<uint32_t, GlTarget> targets_;
     std::unordered_map<uint32_t, GlPipeline> pipelines_;
     GLuint ubo_ = 0, vao_ = 0;
-    GLuint samplers_[2] = {};  // nearest, linear
+    GLuint samplers_[4] = {};  // nearest, linear
     PassDesc pass_;
     int pass_w_ = 0, pass_h_ = 0;
     bool pass_depth_ = false;
