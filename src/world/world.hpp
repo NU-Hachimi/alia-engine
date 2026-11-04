@@ -102,7 +102,25 @@ struct WorldCollider {  // a collider in world space, for the game's own geometr
 // nodes, posed every logic step (and whenever the animation or phase changed).
 struct FiredEvent {
     int anim = 0, index = 0;  // rig.anims[anim].events[index]
+    int layer = 0;            // which layer played it (AnimLayer; 0: the base)
 };
+
+// An animation layer over the base (docs/api.md §4): its own clip, phase and speed, driving only the bones in
+// its mask; it replaces their pose (weighted), it doesn't add to it. The weight fades (smoothstep) between
+// fade_from and fade_to over fade_time; a one-shot clip with `out` >= 0 fades itself out when it ends.
+struct AnimLayer {
+    bool active = false;
+    int anim = 0;
+    float phase = 0, speed = 0;
+    std::vector<uint8_t> mask;  // per bone: 1 = driven by this layer
+    float fade_from = 0, fade_to = 0, fade_time = 0, fade_elapsed = 0;
+    float out = -1;             // seconds to fade out once a non-looping clip ends; < 0: hold its last frame
+    bool ending = false;        // fading out (stop, or `out`): inactive at the end of it
+    int posed_anim = -1;
+    float posed_phase = -1;
+    float weight() const;
+};
+constexpr int kAnimLayers = 3;  // layers 1..3 over the base
 
 // Rigid IK (docs/api.md §4.1): two analytic constraints applied after the animation pose, before
 // anything is composed, in creation order; they write the bones' local rotations, so the result
@@ -140,6 +158,7 @@ struct AnimatorComponent {
     // blend_time seconds (smoothstep); blend_time 0: none.
     std::vector<std::pair<glm::vec3, glm::quat>> blend_from;
     float blend_time = 0, blend_elapsed = 0;
+    AnimLayer layers[kAnimLayers];  // layers 1..3 (index 0 here is layer 1)
 };
 
 // Rotation from yaw (about +Y), pitch (about +X), roll (about +Z), applied Ry * Rx * Rz like
@@ -194,6 +213,12 @@ public:
     // Ease from the pose the bones show now into whatever the animator plays next, over `seconds` (call it
     // when switching animations: play(anim, blend=...)). 0: switch at once.
     void crossfade(Entity root, float seconds);
+    // Layers 1..3 (AnimLayer): play a clip on `mask` bones, fading in over blend seconds; stop fades it out.
+    // Layer 0 is the base (the animator's own anim / phase / speed). False: no such layer or animation.
+    bool play_layer(Entity root, int layer, int anim, float speed, float phase, std::vector<uint8_t> mask, float blend, float out);
+    bool stop_layer(Entity root, int layer, float blend);
+    bool set_layer_weight(Entity root, int layer, float weight);  // held, no fade
+    const AnimLayer* layer(Entity root, int layer);
 
     // Particles (docs/api.md §6). add_particles keeps a template (ids from 1); an emitter is a node
     // spawning from one, by `rate` and by burst(): n particles now, from the emitter or from `at`

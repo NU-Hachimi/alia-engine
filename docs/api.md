@@ -245,8 +245,15 @@ boss = w.spawn_rig(rigs["moose"], position=(0, 0, 0), yaw=0.0)   # 根物体；�
 
 boss.animator.play("walk", speed=64)           # 引擎自己推进：每秒多少相位单位（循环 0..256）
 boss.animator.play("cheer", speed=64, blend=0.3)  # 交叉淡入：0.3 秒从现在的姿态缓到新动画（smoothstep），不跳；animator.blending
+# 动画层（main 上新加的）：层 0 是整个 rig（上面这些），层 1..3 叠在上面，各有自己的动画、相位、速度和事件，只管 mask 里的骨骼
+boss.animator.play("wave", speed=64, layer=1, mask="arm_r", blend=0.2, out=0.3)  # mask：骨骼名（连同它下面的）或一组；
+                                                                            # out：不循环的动画放完后自己用 0.3 秒淡出（None：停在最后一帧）
+boss.animator.play("talk", layer=2, mask=["arm_l", "arm_r", "head"])         # 几个根，各带自己下面的骨骼
+boss.animator.stop(1, blend=0.3)               # 淡出一层；之后这些骨骼又是下面那层的
+boss.animator.layer_weight(2, 0.5)             # 让一层只用一半的分量（还是替换，按权重 slerp，不是叠加）
+boss.animator.layer_active(1)                  # 还开着吗（在放，或者在淡出）
 boss.animator.anim, boss.animator.phase = 2, 128   # 或者游戏每步自己设（Megalith 的用法）
-for ev in boss.animator.fired: ...             # 这一步跨过的事件：{"type", "phase", "anim", 事件自己的键}
+for ev in boss.animator.fired: ...             # 这一步跨过的事件：{"type", "phase", "anim", "layer", 事件自己的键}
 
 boss.bone("head")                              # 骨骼的物体（名字或下标）：可以改 mesh、tint、visible
 boss.slot(3).visible = False                   # 部件槽的物体

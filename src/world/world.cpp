@@ -199,6 +199,20 @@ void World::pose(AnimatorComponent& a) {
             t.rotation = local[b].rotation;
         }
     }
+    // Layers over the base, in order: each replaces its masked bones' pose, by its weight.
+    static thread_local std::vector<LocalPose> over;
+    for (AnimLayer& l : a.layers) {
+        if (!l.active) continue;
+        l.posed_anim = l.anim, l.posed_phase = l.phase;
+        const float lw = l.weight();
+        if (lw <= 0 || !pose_local(r, l.anim, l.phase, over)) continue;
+        for (size_t b = 0; b < a.bones.size() && b < over.size() && b < l.mask.size(); b++) {
+            if (!l.mask[b] || !reg_.valid(a.bones[b])) continue;
+            auto& t = transform(a.bones[b]);
+            t.position = glm::mix(t.position, over[b].position, lw);
+            t.rotation = glm::slerp(t.rotation, over[b].rotation, lw);
+        }
+    }
     a.posed_anim = a.anim;
     a.posed_phase = a.phase;
     if (!a.ik.empty()) {
@@ -284,6 +298,50 @@ void World::solve(Entity root, AnimatorComponent& a, const IkConstraint& c) {
     turn(lower, arc(E2 - B2, A + dir * d - B2));
 }
 
+float AnimLayer::weight() const {
+    if (fade_time <= 0 || fade_elapsed >= fade_time) return fade_to;
+    const float t = std::clamp(fade_elapsed / fade_time, 0.0f, 1.0f);
+    return fade_from + (fade_to - fade_from) * t * t * (3 - 2 * t);
+}
+
+bool World::play_layer(Entity root, int layer, int anim, float speed, float phase, std::vector<uint8_t> mask, float blend,
+                       float out) {
+    AnimatorComponent* a = animator(root);
+    if (!a || layer < 1 || layer > kAnimLayers || anim < 0 || anim >= int(rigs_[a->rig - 1].anims.size())) return false;
+    AnimLayer& l = a->layers[layer - 1];
+    const float from = l.active ? l.weight() : 0.0f;  // fading in from what it shows now
+    l = AnimLayer{};
+    l.active = true, l.anim = anim, l.speed = speed, l.phase = phase, l.mask = std::move(mask), l.out = out;
+    l.fade_from = blend > 0 ? from : 1.0f, l.fade_to = 1, l.fade_time = std::max(blend, 0.0f);
+    pose(*a);
+    return true;
+}
+
+bool World::stop_layer(Entity root, int layer, float blend) {
+    AnimatorComponent* a = animator(root);
+    if (!a || layer < 1 || layer > kAnimLayers) return false;
+    AnimLayer& l = a->layers[layer - 1];
+    if (!l.active) return true;
+    l.fade_from = l.weight(), l.fade_to = 0, l.fade_time = std::max(blend, 0.0f), l.fade_elapsed = 0, l.ending = true;
+    if (blend <= 0) l.active = false;
+    pose(*a);
+    return true;
+}
+
+bool World::set_layer_weight(Entity root, int layer, float weight) {
+    AnimatorComponent* a = animator(root);
+    if (!a || layer < 1 || layer > kAnimLayers) return false;
+    AnimLayer& l = a->layers[layer - 1];
+    l.fade_from = l.fade_to = std::clamp(weight, 0.0f, 1.0f), l.fade_time = 0;
+    if (l.active) pose(*a);
+    return true;
+}
+
+const AnimLayer* World::layer(Entity root, int layer) {
+    AnimatorComponent* a = animator(root);
+    return a && layer >= 1 && layer <= kAnimLayers ? &a->layers[layer - 1] : nullptr;
+}
+
 void World::crossfade(Entity root, float seconds) {
     AnimatorComponent* a = animator(root);
     if (!a) return;
@@ -310,6 +368,26 @@ void World::update_animators(float dt) {
         if (a.blend_time > 0) {
             a.blend_elapsed += dt;
             if (a.blend_elapsed >= a.blend_time) a.blend_time = 0, a.blend_from.clear();  // done: the animation alone
+        }
+        for (int n = 0; n < kAnimLayers; n++) {  // the layers: phase, events, fades, a one-shot's end
+            AnimLayer& l = a.layers[n];
+            if (!l.active || l.anim < 0 || l.anim >= int(r.anims.size())) continue;
+            const asset::RigAnimData& la = r.anims[size_t(l.anim)];
+            if (l.speed != 0) {
+                l.phase += l.speed * dt;
+                l.phase = la.loop ? std::fmod(std::fmod(l.phase, 256.0f) + 256.0f, 256.0f) : std::clamp(l.phase, 0.0f, 255.0f);
+            }
+            const float lf = l.posed_anim == l.anim ? l.posed_phase : -1.0f, lt = l.phase;
+            for (size_t k = 0; k < la.events.size(); k++) {
+                const float p = la.events[k].phase;
+                const bool crossed = lt >= lf ? (p > lf && p <= lt) : (la.loop && (p > lf || p <= lt));
+                if (crossed && lf != lt) a.fired.push_back({l.anim, int(k), n + 1});
+            }
+            if (l.fade_time > 0 && l.fade_elapsed < l.fade_time) l.fade_elapsed += dt;
+            if (!la.loop && l.out >= 0 && !l.ending && l.phase >= 255.0f) {  // a one-shot at its end: fade out
+                l.fade_from = l.weight(), l.fade_to = 0, l.fade_time = l.out, l.fade_elapsed = 0, l.ending = true;
+            }
+            if (l.ending && (l.fade_time <= 0 || l.fade_elapsed >= l.fade_time)) l.active = false;
         }
         if (a.anim < 0 || a.anim >= int(r.anims.size())) continue;
         const asset::RigAnimData& anim = r.anims[size_t(a.anim)];
@@ -498,7 +576,11 @@ std::optional<float> World::ray_ground(glm::vec3 o, glm::vec3 dir, float max_dis
 
 void World::pose_changed() {
     for (auto [e, a] : reg_.view<AnimatorComponent>().each())
-        if ((a.anim != a.posed_anim || a.phase != a.posed_phase) && active_in_hierarchy(e)) pose(a);
+        if (active_in_hierarchy(e)) {
+            bool changed = a.anim != a.posed_anim || a.phase != a.posed_phase;
+            for (const AnimLayer& l : a.layers) changed = changed || (l.active && (l.anim != l.posed_anim || l.phase != l.posed_phase));
+            if (changed) pose(a);
+        }
 }
 
 glm::mat4 World::world_matrix(Entity e) {

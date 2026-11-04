@@ -870,18 +870,62 @@ NB_MODULE(alia_engine, m) {
                      [](PyAnimator& a, float v) { a.node.a().speed = v; },
                      "Phase units per second the engine advances by itself; 0: the game sets phase.")
         .def("play",
-             [](PyAnimator& a, nb::handle anim, float speed, float phase, float blend) {
+             [](PyAnimator& a, nb::handle anim, float speed, float phase, float blend, int layer, nb::handle mask,
+                std::optional<float> out) {
                  auto& an = a.node.a();
                  PyRig rig{a.node.engine_obj, an.rig};
                  const int index = rig.anim_index(anim);
-                 a.node.w().crossfade(a.node.entity, blend);  // from the pose shown now (before the switch)
-                 an.anim = index;
-                 an.speed = speed;
-                 an.phase = phase;
+                 if (layer == 0) {
+                     if (!mask.is_none() || out) throw nb::value_error("mask and out are for layers 1..3 (layer 0 is the whole rig)");
+                     a.node.w().crossfade(a.node.entity, blend);  // from the pose shown now (before the switch)
+                     an.anim = index;
+                     an.speed = speed;
+                     an.phase = phase;
+                     return;
+                 }
+                 if (layer < 1 || layer > world::kAnimLayers) throw nb::value_error("layer: 0 (the base) or 1..3");
+                 if (mask.is_none()) throw nb::value_error("a layer needs a mask: a bone name or a list of them");
+                 // each name: that bone and every bone below it (rig bones are parent-first)
+                 const asset::RigData& r = rig.data();
+                 std::vector<std::string> names;
+                 if (nb::isinstance<nb::str>(mask)) names.push_back(nb::cast<std::string>(mask));
+                 else for (nb::handle h : mask) names.push_back(nb::cast<std::string>(h));
+                 std::vector<uint8_t> in(r.bones.size(), 0);
+                 for (const std::string& name : names) {
+                     auto it = std::find_if(r.bones.begin(), r.bones.end(), [&](const auto& b) { return b.name == name; });
+                     if (it == r.bones.end()) throw nb::value_error(("mask: no bone " + name).c_str());
+                     in[size_t(it - r.bones.begin())] = 1;
+                 }
+                 for (size_t b = 0; b < r.bones.size(); b++)
+                     if (r.bones[b].parent >= 0 && in[size_t(r.bones[b].parent)]) in[b] = 1;
+                 a.node.w().play_layer(a.node.entity, layer, index, speed, phase, std::move(in), blend, out.value_or(-1.0f));
              },
-             "anim"_a, "speed"_a = 64.0f, "phase"_a = 0.0f, "blend"_a = 0.0f,
+             "anim"_a, "speed"_a = 64.0f, "phase"_a = 0.0f, "blend"_a = 0.0f, "layer"_a = 0, "mask"_a = nb::none(),
+             "out"_a = nb::none(),
              "Start an animation (name or index); speed in phase units/s. blend: seconds to ease from the pose shown "
-             "now into it (a crossfade: idle -> wave without a snap); 0 switches at once.")
+             "now into it (a crossfade: idle -> wave without a snap); 0 switches at once. layer 1..3: over the base "
+             "(layer 0), driving only mask's bones (a bone name or a list: each with the bones below it), fading in "
+             "over blend; it replaces their pose, weighted. out (layers, one-shot clips): fade out over that many "
+             "seconds once it ends (None: hold the last frame).")
+        .def("stop",
+             [](PyAnimator& a, int layer, float blend) {
+                 if (layer < 1 || layer > world::kAnimLayers) throw nb::value_error("stop: layer 1..3 (layer 0 always plays)");
+                 a.node.w().stop_layer(a.node.entity, layer, blend);
+             },
+             "layer"_a, "blend"_a = 0.0f, "Fade a layer out over blend seconds; then its bones show the layers below.")
+        .def("layer_weight",
+             [](PyAnimator& a, int layer, float weight) {
+                 if (!a.node.w().set_layer_weight(a.node.entity, layer, weight)) throw nb::value_error("layer: 1..3");
+             },
+             "layer"_a, "weight"_a, "Hold a layer at part strength (0..1; it still replaces, weighted).")
+        .def("layer_active",
+             [](PyAnimator& a, int layer) {
+                 if (layer == 0) return true;
+                 const world::AnimLayer* l = a.node.w().layer(a.node.entity, layer);
+                 if (!l) throw nb::value_error("layer: 0..3");
+                 return l->active;
+             },
+             "layer"_a, "Is the layer on (playing, or fading out)? Layer 0 always is.")
         .def_prop_ro("blending", [](PyAnimator& a) { return a.node.a().blend_time > 0; },
                      "True while a crossfade (play(..., blend=)) is still easing in.")
         .def_prop_ro("fired",
@@ -889,7 +933,11 @@ NB_MODULE(alia_engine, m) {
                          auto& an = a.node.a();
                          const asset::RigData& rig = *a.node.w().rig(an.rig);
                          nb::list out;
-                         for (const auto& f : an.fired) out.append(event_dict(rig, f.anim, f.index));
+                         for (const auto& f : an.fired) {
+                             nb::dict d = event_dict(rig, f.anim, f.index);
+                             d["layer"] = f.layer;
+                             out.append(d);
+                         }
                          return out;
                      },
                      "Events crossed in the last logic step: dicts with type, phase, anim and the event's own keys.");
