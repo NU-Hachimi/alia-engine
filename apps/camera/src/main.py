@@ -6,6 +6,7 @@ and the camera's state, mode and frame rate. Run from apps/camera/ (docs/project
 
 Controls:
     A (east)       take a photo (saved in the cart's saves as photo-N.jpg)
+    Y (west)       what goes into the photo: the camera only / + the 3D scene / + the scene and the HUD (photo mode)
     B (south)      background: cover / fit / off (with off, a viewfinder box instead)
     START          close the camera / open it again
     SELECT         a screenshot of what the game draws (screen-N.png in the cart's saves; photos hold only the camera)
@@ -26,6 +27,7 @@ from album import Album  # noqa: E402
 
 WHITE, DIM, SHADOW = 0xFFFFFFFF, 0xC0C8D0FF, 0x000000C0
 BACKGROUNDS = ("cover", "fit", "off")
+PHOTO_KINDS = (("camera only", False, False), ("camera + scene", True, False), ("camera + scene + HUD", True, True))
 
 
 class Game:
@@ -41,6 +43,7 @@ class Game:
         self.photos, self.screens, self.shot, self.note = last("photo-"), last("screen-"), None, ""
         self.want_screen = False
         self.album = None
+        self.kind = 0
         self.rate, self.last_seq, self.last_t = 0.0, None, time.monotonic()
         e.lens.open()
 
@@ -63,10 +66,14 @@ class Game:
                 cam.open()
             else:
                 cam.close()
+        if i.pressed & ae.WEST:
+            self.kind = (self.kind + 1) % len(PHOTO_KINDS)
+            self.note = f"photos: {PHOTO_KINDS[self.kind][0]}"
         if i.pressed & ae.SELECT:
             self.want_screen = True
         if i.pressed & ae.EAST and self.shot is None:
-            self.shot, self.note = cam.photo(), "taking a photo..."
+            _, scene, hud = PHOTO_KINDS[self.kind]
+            self.shot, self.note = cam.photo(scene=scene, hud=hud), "taking a photo..."
         if self.shot is not None and self.shot.done:
             if self.shot.jpeg:
                 self.photos += 1
@@ -102,9 +109,9 @@ class Game:
         size = "%dx%d" % cam.size if cam.size else "-"
         e.hud_text(4, 3, f"CAMERA {cam.state.upper()}  MODE {mode}  IMAGE {size}  {self.rate:4.1f} FPS  "
                          f"{'ZERO COPY' if cam.zero_copy else 'COPIED'}", WHITE, 1, SHADOW)
-        e.hud_text(4, 13, cam.message or f"background {BACKGROUNDS[self.background]}", DIM, 1)
+        e.hud_text(4, 13, cam.message or f"background {BACKGROUNDS[self.background]}   photos: {PHOTO_KINDS[self.kind][0]}", DIM, 1)
         e.hud_text(4, h - 22, self.note, WHITE, 1, SHADOW)
-        e.hud_text(4, h - 11, "A: PHOTO  B: BACKGROUND  X: ALBUM  START: CAMERA  SELECT: SCREENSHOT", DIM, 1, SHADOW)
+        e.hud_text(4, h - 11, "A: PHOTO  Y: PHOTO KIND  B: BACKGROUND  X: ALBUM  START: CAMERA  SELECT: SCREEN", DIM, 1, SHADOW)
         if self.want_screen:  # the last frame shown (this one isn't drawn yet), into the saves
             self.want_screen = False
             self.screens += 1

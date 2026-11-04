@@ -118,6 +118,13 @@ public:
     // (black while there is none); color multiplies it (0xRRGGBBAA).
     void hud_lens(float x, float y, float w, float h, bool fit, uint32_t color);
 
+    // Photos (docs/camera.md): the lens's photo alone, or composited like a game's photo mode: the frame
+    // shown when it was asked for, rendered again at width x height with the full-resolution photo in place
+    // of the live camera image; scene false leaves the 3D world out (the photo fills the background), hud
+    // false the HUD. Asynchronous: photo(id) until done.
+    uint32_t take_photo(bool scene, bool hud, int width, int height);
+    const Lens::Photo* photo(uint32_t id) const;
+
     // Textures (docs/textures.md): ids from 1; kLensTexture is the lens's image. A texture loading in
     // the background (load_texture_async) has ready false until poll() uploads it, or an error.
     static constexpr uint32_t kLensTexture = 0xFFFFFFFFu;
@@ -180,6 +187,19 @@ private:
     uint32_t next_texture_ = 1;
     size_t texture_bytes_ = 0;
     void upload(uint32_t id, Tex& t, const Image& img);
+    struct Composite {
+        bool scene = true, hud = false, snapshot_pending = true;
+        int width = 0, height = 0;
+        render::FrameDesc frame;
+        std::vector<render::Instance> instances;
+        std::vector<render::HudCmd> hud_cmds;
+        std::future<std::pair<Image, std::string>> decode;
+        std::future<std::vector<uint8_t>> encode;
+        Lens::Photo result;
+    };
+    std::map<uint32_t, Composite> composites_;
+    void update_composites();
+    void render_composite(Composite& c, const Image& photo);
     void push_image(render::HudCmd c, rhi::TextureH tex, int tw, int th, bool linear, bool fit);
     std::vector<render::Instance> instances_;
     std::vector<render::HudCmd> hud_;

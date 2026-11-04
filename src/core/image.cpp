@@ -75,4 +75,15 @@ Image shrink(const Image& img, int max_side) {
     return out;
 }
 
+std::vector<uint8_t> encode_jpeg(const Image& img, int quality) {
+    std::vector<uint8_t> out;
+    stbi_write_jpg_to_func(
+        [](void* ctx, void* data, int size) {
+            auto* o = static_cast<std::vector<uint8_t>*>(ctx);
+            o->insert(o->end(), static_cast<uint8_t*>(data), static_cast<uint8_t*>(data) + size);
+        },
+        &out, img.width, img.height, 4, img.rgba.data(), quality);
+    return out;
+}
+
 }  // namespace alia

@@ -498,8 +498,13 @@ void HandheldPipeline::set_palette(rhi::Device& dev, std::span<const uint8_t> rg
 
 void HandheldPipeline::render(rhi::Device& dev, const FrameDesc& f, std::span<const Instance> instances,
                               std::span<const HudCmd> hud) {
+    render_into(dev, target_, w_, h_, f, instances, hud);
+}
+
+void HandheldPipeline::render_into(rhi::Device& dev, rhi::TargetH target, int W, int H, const FrameDesc& f,
+                                   std::span<const Instance> instances, std::span<const HudCmd> hud) {
     stats_ = {};
-    const float aspect = float(w_) / float(h_);
+    const float aspect = float(W) / float(H);
     const float fov_y = 2 * std::atan(std::tan(f.fov_x / 2) / aspect);
     const glm::vec3 eye(f.eye[0], f.eye[1], f.eye[2]);
     const glm::vec3 fwd(std::sin(f.yaw) * std::cos(f.pitch), std::sin(f.pitch), std::cos(f.yaw) * std::cos(f.pitch));
@@ -515,9 +520,9 @@ void HandheldPipeline::render(rhi::Device& dev, const FrameDesc& f, std::span<co
     for (glm::vec4& p : planes) p /= glm::length(glm::vec3(p));
 
     rhi::PassDesc pass;
-    pass.target = target_;
-    pass.width = w_;
-    pass.height = h_;
+    pass.target = target;
+    pass.width = W;
+    pass.height = H;
     pass.color_load = rhi::LoadOp::DontCare;  // the sky covers every pixel
     pass.depth_load = rhi::LoadOp::Clear;
     pass.depth_store = rhi::StoreOp::DontCare;
@@ -526,12 +531,12 @@ void HandheldPipeline::render(rhi::Device& dev, const FrameDesc& f, std::span<co
 
     if (f.lens_background != LensBackground::Off) {
         // The image's size on the scene: Cover the smallest that fills it, Fit the largest that fits.
-        float map[8] = {1, 1, -2, -2, float(w_), float(h_), 0, 0};  // no image: all outside, black
+        float map[8] = {1, 1, -2, -2, float(W), float(H), 0, 0};  // no image: all outside, black
         if (lens_ && lens_w_ > 0 && lens_h_ > 0) {
-            const float sx = float(w_) / float(lens_w_), sy = float(h_) / float(lens_h_);
+            const float sx = float(W) / float(lens_w_), sy = float(H) / float(lens_h_);
             const float s = f.lens_background == LensBackground::Cover ? std::max(sx, sy) : std::min(sx, sy);
-            map[0] = float(w_) / (float(lens_w_) * s);
-            map[1] = float(h_) / (float(lens_h_) * s);
+            map[0] = float(W) / (float(lens_w_) * s);
+            map[1] = float(H) / (float(lens_h_) * s);
             map[2] = (1 - map[0]) / 2;
             map[3] = (1 - map[1]) / 2;
         }
@@ -544,11 +549,11 @@ void HandheldPipeline::render(rhi::Device& dev, const FrameDesc& f, std::span<co
         float sky[12];
         rgb(f.sky_top, sky);
         rgb(f.sky_horizon, sky + 4);
-        const float focal = (float(h_) / 2) / std::tan(fov_y / 2);
+        const float focal = (float(H) / 2) / std::tan(fov_y / 2);
         sky[8] = f.pitch;
         sky[9] = focal;
         sky[10] = std::max(f.sky_span, 1e-3f);
-        sky[11] = float(h_) / 2;
+        sky[11] = float(H) / 2;
         dev.set_pipeline(sky_);
         dev.set_uniforms(sky, sizeof sky);
         dev.draw(3);

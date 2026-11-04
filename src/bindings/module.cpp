@@ -381,7 +381,7 @@ bool linear_filter(const std::string& f) {
 struct PyPhoto {
     nb::object engine_obj;
     uint32_t id;
-    const runtime::Lens::Photo* p() const { return nb::cast<PyEngine&>(engine_obj).get().lens().photo(id); }
+    const runtime::Lens::Photo* p() const { return nb::cast<PyEngine&>(engine_obj).get().photo(id); }
 };
 struct PySound {
     nb::object engine_obj;
@@ -1044,9 +1044,15 @@ NB_MODULE(alia_engine, m) {
                      "The camera's image as a texture (hud_image; later materials), new each frame.")
         .def_prop_ro("zero_copy", [](PyLens& c) { return c.c().zero_copy(); },
                      "True when the GPU reads the frames in place (the handheld); False: copied (some simulators).")
-        .def("photo", [](PyLens& c) { return PyPhoto{c.engine_obj, c.c().take_photo()}; },
-             "Take a photo, asynchronously: a Photo; poll .done. Only while the camera is open (else .error). The "
-             "engine doesn't keep it: save .jpeg yourself (save.write).");
+        .def("photo",
+             [](PyLens& c, bool scene, bool hud, std::pair<int, int> size) {
+                 return PyPhoto{c.engine_obj, c.e().take_photo(scene, hud, size.first, size.second)};
+             },
+             "scene"_a = false, "hud"_a = false, "size"_a = std::pair{1920, 1080},
+             "Take a photo, asynchronously: a Photo; poll .done. Only while the camera is open (else .error). "
+             "Alone (the default): the camera's full-resolution JPEG. scene / hud: composited like a game's photo "
+             "mode: the frame on screen, rendered again at size with the photo in place of the live image, the 3D "
+             "world and / or the HUD in it (HUD scaled up, blocky). The engine doesn't keep it: save .jpeg yourself.");
 
     nb::class_<PyAudio>(m, "Audio",
                         "The engine's mixer (docs/api.md §7): one 48 kHz stereo stream to the system; music and effects "

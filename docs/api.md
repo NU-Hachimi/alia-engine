@@ -118,7 +118,7 @@ ae.run(Game(), argv=sys.argv[1:], title="Game", fixed_hz=60, app_id="com.example
 | `e.frame` | 天空、雾、灯、叠色，帧与帧之间保留（下表）；相机字段跟着 `w.camera`（§3），用世界的相机就不用管 |
 | `e.draw(mesh, model, tint=0, light=ae.Light.MATERIAL, fade=0, ground_fog=True)` | 本帧画一个实例；`model`：行主序 3×4（12 个数）；其余参数是实例覆盖（§2） |
 | `e.hud_rect(x, y, w, h, color)`、`e.hud_text(x, y, text, color, scale, shadow)` | 场景像素坐标，颜色 0xRRGGBBAA |
-| `e.lens`、`e.hud_lens(x, y, w, h, fit=False, color=…)` | 掌机的相机（`docs/camera.md`，main 上新加的）：打开、状态、拍照；相机画面画进 HUD 的框里 |
+| `e.lens`、`e.hud_lens(x, y, w, h, fit=False, color=…)` | 掌机的相机（`docs/camera.md`，main 上新加的）：打开、状态、拍照（可以连游戏画面一起拍：照片模式）；相机画面画进 HUD 的框里 |
 | `e.load_texture(path 或 bytes, max_size=2048, filter="nearest")`、`e.load_texture_async(...)`、`e.create_texture(w, h, rgba)`、`e.hud_image(tex, x, y, w, h, fit=False, color=…, src=None)` | 纹理和 HUD 里的图片（`docs/textures.md`，main 上新加的）：PNG / JPEG；材质用纹理是下一步 |
 | `e.screenshot(path)`、`e.scene_size`、`e.stats`、`e.describe()` | `scene_size`：场景（HUD）像素，默认 (640, 360) |
 

@@ -24,7 +24,8 @@ e.frame.lens_background = "cover"   # 天空的位置画相机画面，填满、
 e.hud_lens(x, y, w, h)              # HUD 里画相机画面（取景框），场景像素：裁掉多出的部分填满这个框
 e.hud_lens(x, y, w, h, fit=True, color=0xFFFFFF80)   # 完整显示、在框里居中；color 乘在画面上（这里半透明）
 
-shot = cam.photo()      # 拍照，异步：shot.done，然后 shot.jpeg（bytes）或 shot.error
+shot = cam.photo()      # 拍照，异步：shot.done，然后 shot.jpeg（bytes）或 shot.error；只有相机拍到的，全分辨率
+shot = cam.photo(scene=True, hud=True, size=(1920, 1080))   # 照片模式：游戏画面也拍进去（3D 物体、HUD，可以分别开关）
 # 之后某一步：if shot.done and shot.jpeg: ae.save.write("photo-1.jpg", shot.jpeg)
 ```
 
@@ -42,6 +43,10 @@ shot = cam.photo()      # 拍照，异步：shot.done，然后 shot.jpeg（bytes
 - **暂停**：拍照的那一下、卡带不在前台、系统相机临时拿走时是 `"paused"`，画面停在最后一张；恢复后引擎自己重新接上，游戏不用管。
 - **拍照**：只在相机开着时能拍（不然 `shot.error`），一次一张（前一张还没好时再拍是 `shot.error`）。结果是正立的 JPEG，视野和当前画面一样
   （裁切模式就是裁切后的视野），全分辨率。引擎不替游戏存：游戏自己用 `ae.save.write` 存进自己的存档；引擎只留最近 8 张的结果。
+- **照片模式**（`scene` / `hud`，像成熟游戏那样）：拍下按下那一刻屏幕上的那一帧，按 `size`（默认 1920×1080，每边最多 2048）重新渲染一遍，
+  相机的全分辨率照片代替实时画面（背景、取景框里都是），裁切方式和屏幕上一样，所以 3D 物体落在照片里同样的位置。
+  `scene=False` 不画 3D 世界（照片铺满背景），`hud=False` 不画 HUD。HUD 按场景像素放大（最近邻：和屏幕一样是像素风，1920×1080 时放大 3 倍）。
+  照片解码、编码都在另一个线程；板上整个过程估计 2–3 秒（还没测）。两个都是 False（默认）就是相机原样的照片。
 - **用不了**：`"unavailable"`（机器上没有相机，或者没有相机服务：比如电脑上的模拟器，相机模拟还没做）、`"busy"`（别人在用）、
   `"suspended"`（卡带不在前台）、`"failed"`（系统那边出错，`message` 说原因）。这时背景和取景框画成黑色；要重试就 `close()` 再 `open()`。
 - **转向**：相机的安装方向引擎自己处理，`cam.size` 和画面都是转好的；内参是原始帧的（AR 标记识别用到时再给换算好的）。

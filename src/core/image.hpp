@@ -20,6 +20,8 @@ bool read_png(const std::string& path, Image* img);
 bool decode_image(const uint8_t* data, size_t size, Image* img, std::string* error);
 // Scaled down by averaging (a box filter) so the longer side is at most max_side; smaller images unchanged.
 Image shrink(const Image& img, int max_side);
+// JPEG bytes of an image (quality 1..100; alpha dropped).
+std::vector<uint8_t> encode_jpeg(const Image& img, int quality);
 
 // Per-channel comparison: pixels differing by more than `tolerance` in any channel.
 struct ImageDiff {

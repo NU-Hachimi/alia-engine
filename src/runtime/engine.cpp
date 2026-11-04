@@ -2,6 +2,8 @@
 #include "runtime/saves.hpp"
 
 #include <chrono>
+#include <cmath>
+#include <algorithm>
 #include <cstdio>
 
 #include "asset/pack.hpp"
@@ -16,6 +18,12 @@ double now_ms() {
     return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
 }
 
+}  // namespace
+
+namespace {  // textures and photos
+constexpr int kMaxTextureSide = 2048;
+constexpr int kMaxPhotoSide = 2048;
+int clamp_side(int max_side) { return max_side <= 0 ? kMaxTextureSide : std::min(max_side, kMaxTextureSide); }
 }  // namespace
 
 Engine::Engine() = default;
@@ -96,6 +104,11 @@ void Engine::close() {
     world_ = world::World();  // the scene and the loaded rigs
     textures_.clear();
     texture_bytes_ = 0;
+    for (auto& [id, c] : composites_) {
+        if (c.decode.valid()) c.decode.wait();
+        if (c.encode.valid()) c.encode.wait();
+    }
+    composites_.clear();
     mesh_names_.clear();
     alpha_ = 1.0f;
 }
@@ -112,6 +125,7 @@ bool Engine::poll(bool carry_pressed) {
     input_ = surface_->input();
     input_.pressed |= carried;
     lens_.update(*dev_);
+    update_composites();
     for (auto& [id, t] : textures_) {  // background decodes that are done: onto the GPU
         if (!t.pending.valid() || t.pending.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
         auto [img, err] = t.pending.get();
@@ -275,10 +289,92 @@ void Engine::upload(uint32_t id, Tex& t, const Image& img) {
     texture_bytes_ += size_t(img.width) * img.height * 4;
 }
 
-namespace {
-constexpr int kMaxTextureSide = 2048;
-int clamp_side(int max_side) { return max_side <= 0 ? kMaxTextureSide : std::min(max_side, kMaxTextureSide); }
-}  // namespace
+
+uint32_t Engine::take_photo(bool scene, bool hud, int width, int height) {
+    const uint32_t id = lens_.take_photo();
+    if (!scene && !hud) return id;  // the lens's photo as it is
+    for (auto it = composites_.begin(); composites_.size() >= 8 && it != composites_.end();)  // the newest few kept
+        it = it->second.result.done ? composites_.erase(it) : std::next(it);
+    Composite& c = composites_[id];
+    c.scene = scene, c.hud = hud;
+    c.width = std::clamp(width, 16, kMaxPhotoSide), c.height = std::clamp(height, 16, kMaxPhotoSide);
+    return id;
+}
+
+const Lens::Photo* Engine::photo(uint32_t id) const {
+    auto it = composites_.find(id);
+    if (it == composites_.end()) return lens_.photo(id);
+    return &it->second.result;
+}
+
+void Engine::update_composites() {
+    for (auto it = composites_.begin(); it != composites_.end(); ++it) {
+        Composite& c = it->second;
+        if (c.result.done) continue;
+        if (c.encode.valid()) {
+            if (c.encode.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+            c.result = {true, c.encode.get(), ""};
+            if (c.result.jpeg.empty()) c.result.error = "the photo could not be encoded";
+            continue;
+        }
+        if (c.decode.valid()) {
+            if (c.snapshot_pending || c.decode.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+            auto [img, err] = c.decode.get();
+            if (img.empty()) {
+                c.result = {true, {}, "the camera's photo: " + err};
+                continue;
+            }
+            render_composite(c, img);
+            continue;
+        }
+        const Lens::Photo* p = lens_.photo(it->first);
+        if (!p || !p->done) continue;
+        if (p->jpeg.empty()) {
+            c.result = {true, {}, p->error};
+            continue;
+        }
+        // Decoded on another thread (a full-resolution photo: about a second on the handheld), just big
+        // enough to cover the photo's size.
+        c.decode = std::async(std::launch::async, [jpeg = p->jpeg, w = c.width, h = c.height]() {
+            Image img;
+            std::string err;
+            if (!decode_image(jpeg.data(), jpeg.size(), &img, &err)) return std::pair{Image{}, err};
+            const double s = std::max(double(w) / img.width, double(h) / img.height);
+            const int side = int(std::ceil(std::max(img.width, img.height) * std::min(1.0, s)));
+            return std::pair{shrink(img, side), std::string()};
+        });
+    }
+}
+
+void Engine::render_composite(Composite& c, const Image& photo) {
+    rhi::TextureH ptex = dev_->create_texture({photo.width, photo.height, rhi::Format::RGBA8, rhi::Filter::Linear, photo.rgba.data()});
+    rhi::TextureH color = dev_->create_texture({c.width, c.height, rhi::Format::RGBA8, rhi::Filter::Nearest, nullptr});
+    rhi::TextureH depth = dev_->create_texture({c.width, c.height, rhi::Format::Depth24, rhi::Filter::Nearest, nullptr});
+    rhi::TargetH target = dev_->create_target({color, depth});
+    // The photo takes the live camera image's place everywhere the frame used it.
+    const rhi::TextureH live = lens_.image();
+    for (render::HudCmd& h : c.hud_cmds)
+        if (h.kind == render::HudCmd::Image && live && h.texture == live) h.texture = ptex, h.tex_w = photo.width, h.tex_h = photo.height;
+    render::FrameDesc f = c.frame;
+    std::span<const render::Instance> instances = c.instances;
+    if (!c.scene) {  // only the photo (and the HUD): it fills the background
+        f.lens_background = render::LensBackground::Cover;
+        f.overlay = 0;
+        instances = {};
+    }
+    std::span<const render::HudCmd> hud = c.hud ? std::span<const render::HudCmd>(c.hud_cmds) : std::span<const render::HudCmd>();
+    pipeline_.set_lens_image(ptex, photo.width, photo.height);
+    pipeline_.render_into(*dev_, target, c.width, c.height, f, instances, hud);
+    pipeline_.set_lens_image(lens_.image(), lens_.image_width(), lens_.image_height());
+    Image out;
+    out.width = c.width, out.height = c.height;
+    out.rgba.resize(size_t(c.width) * c.height * 4);
+    dev_->read_pixels(target, c.width, c.height, out.rgba.data());
+    dev_->destroy(target);
+    for (rhi::TextureH t : {ptex, color, depth}) dev_->destroy(t);
+    c.instances.clear(), c.hud_cmds.clear();
+    c.encode = std::async(std::launch::async, [out = std::move(out)]() { return encode_jpeg(out, 92); });
+}
 
 bool Engine::read_content(const std::string& path, std::vector<uint8_t>* out, std::string* error) {
     const std::string p = asset::content_path(path);
@@ -367,6 +463,11 @@ const Engine::TextureInfo* Engine::texture_info(uint32_t id) const {
 void Engine::end_frame() {
     const double t0 = now_ms();
     world_.collect(alpha_, instances_, frame_);
+    for (auto& [id, c] : composites_)  // photos asked for since the last frame: this frame is the one they show
+        if (c.snapshot_pending) {
+            c.frame = frame_, c.instances = instances_, c.hud_cmds = hud_;
+            c.snapshot_pending = false;
+        }
     pipeline_.set_lens_image(lens_.image(), lens_.image_width(), lens_.image_height());
     pipeline_.render(*dev_, frame_, instances_, hud_);
     const bool window = surface_->has_default_framebuffer();

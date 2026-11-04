@@ -161,6 +161,11 @@ public:
     // are drawn one by one, back to front.
     void render(rhi::Device& dev, const FrameDesc& frame, std::span<const Instance> instances,
                 std::span<const HudCmd> hud);
+    // The same into another target of any size (photos at a higher resolution): the view keeps its
+    // horizontal field of view, the HUD its scene-pixel layout, scaled up (nearest: blocky, like the screen).
+    // The target needs a depth attachment.
+    void render_into(rhi::Device& dev, rhi::TargetH target, int width, int height, const FrameDesc& frame,
+                     std::span<const Instance> instances, std::span<const HudCmd> hud);
 
     rhi::TextureH color() const { return color_; }
     rhi::TargetH target() const { return target_; }

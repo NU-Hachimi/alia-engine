@@ -35,7 +35,8 @@ FRAME_S = struct.Struct("<4I Q I 4f I")
 assert MODE_S.size == 96 and FRAME_S.size == 48
 
 W, H, STRIDE, NBUF, BLACK = 320, 240, 320, 3, 16
-JPEG = b"\xff\xd8 not really a jpeg \xff\xd9"
+# the photo: a real 32x16 JPEG, the left half red (220, 40, 40), the right half blue (40, 60, 220)
+from test_textures_data import JPEG, RED, BLUE  # noqa: E402
 
 
 def shared_memory(name, data):
@@ -232,7 +233,57 @@ with tempfile.TemporaryDirectory() as tmp:
     check("paused" in states, f"photo: paused on the way ({sorted(states)})")
     frames(e, 10)
     check(cam.state == "running", "after the photo: running again (new buffers)")
-    check(cam.photo().done is False, "a photo while open is in flight, not failed")
+    inflight = cam.photo()
+    check(inflight.done is False, "a photo while open is in flight, not failed")
+    deadline = time.time() + 5
+    while not inflight.done and time.time() < deadline:
+        frames(e, 1)
+
+    # photo mode: the frame rendered again at the size asked for, the photo in place of the live image
+    def composite(**kw):
+        p = cam.photo(**kw)
+        deadline = time.time() + 10
+        while not p.done and time.time() < deadline:
+            frames(e, 1, lambda e: e.hud_rect(0, 0, 40, 40, 0x00FF00FF))  # the HUD: a green box top-left
+        return p
+    def look(jpeg, at):
+        """Pixels of a JPEG, drawn by the engine (no Pillow in the runtime image): at = [(x, y) in 0..1]."""
+        t = e.load_texture(jpeg, filter="nearest")
+        e.poll()
+        e.hud_image(t, 0, 0, 640, 360)
+        e.end_frame()
+        path = os.path.join(tmp, "look.png")
+        e.screenshot(path, scene_only=True)
+        size = (t.width, t.height)
+        t.destroy()
+        return size, [pixel(path, int(x * 639), int(y * 359)) for x, y in at]
+    e.frame.lens_background = "cover"
+    p = composite(scene=False, hud=True, size=(320, 180))
+    check(p.jpeg and p.jpeg[:2] == b"\xff\xd8", f"photo mode: a JPEG ({p.error})")
+    if p.jpeg:
+        size, (box, left, right) = look(p.jpeg, [(0.05, 0.08), (0.3, 0.6), (0.8, 0.6)])
+        check(size == (320, 180), f"photo mode: the size asked for ({size})")
+        check(near(box, (0, 255, 0), 40) and near(left, RED, 40) and near(right, BLUE, 40),
+              f"photo mode: the photo fills it, the HUD on top ({box} {left} {right})")
+    e.frame.lens_background = "off"
+    e.frame.sky_top = e.frame.sky_horizon = 0x804020
+    e.frame.fog_steps = 0
+    import alia_kit as kit
+    box = e.world.spawn(e.create_mesh(kit.box(2, 2, 2, kit.pal.WHITE)), position=(0, 2, 6))
+    p = composite(scene=True, hud=False, size=(320, 180))
+    if p.jpeg:
+        size, (corner, middle) = look(p.jpeg, [(0.05, 0.08), (0.5, 0.5)])
+        check(near(corner, (0x80, 0x40, 0x20), 40) and not near(middle, (0x80, 0x40, 0x20), 60),
+              f"photo mode, scene without the HUD: the sky and the 3D box as on screen, no HUD box ({corner} {middle})")
+    else:
+        check(False, f"photo mode, scene: {p.error}")
+    p = cam.photo()
+    deadline = time.time() + 5
+    while not p.done and time.time() < deadline:
+        frames(e, 1)
+    check(p.jpeg == JPEG, "the photo alone: the camera's JPEG as it is")
+    box.destroy()
+
     cam.close()
     fake.join(2)
     check(fake.closed and cam.state == "closed", "close: the service sees CLOSE (or the hang-up), closed")
