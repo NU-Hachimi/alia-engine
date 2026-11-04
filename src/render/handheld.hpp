@@ -152,6 +152,7 @@ public:
     uint32_t create_material(const Material& m, std::string* error);
     bool update_material(uint32_t id, const Material& m, std::string* error);
     bool has_material(uint32_t id) const { return id >= 1 && id < materials_.size() && material_live_[id]; }
+    const Material* material(uint32_t id) const { return id < materials_.size() && material_live_[id] ? &materials_[id] : nullptr; }
     // Frees a material no mesh uses any more (false and why otherwise); its id may be given to a new one.
     bool destroy_material(uint32_t id, std::string* error);
 

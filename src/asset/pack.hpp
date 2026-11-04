@@ -10,7 +10,7 @@
 
 namespace alia::asset {
 
-enum class EntryType : uint8_t { Mesh = 1, Material = 2, Rig = 3 };
+enum class EntryType : uint8_t { Mesh = 1, Material = 2, Rig = 3, Texture = 4 };
 
 struct Entry {
     EntryType type;
@@ -41,6 +41,18 @@ struct MaterialData {
     uint8_t shading = 0, color = 0, palette_index = 0, light = 0, alpha_mode = 0;
     float ambient = -1, diffuse = -1, emissive = 0, opacity = 1;
     bool double_sided = false, fog = true, ground_fog = true;
+    std::string texture;              // colour 2: a texture entry of the same pack ("" none: magenta)
+    float uv_rect[4] = {0, 0, 1, 1};  // u0, v0, u1, v1
+};
+
+// A texture (docs/formats.md type 4): an image file as it was given (format 0: PNG or JPEG, decoded
+// when loaded), with how it is sampled.
+struct TextureData {
+    int width = 0, height = 0;
+    uint8_t format = 0;
+    bool linear = false, repeat = false, mipmaps = false;
+    const uint8_t* data = nullptr;  // into the pack's bytes
+    size_t size = 0;
 };
 
 // A rigid rig (docs/formats.md type 3): bones in parent-first order, part slots, attach points
@@ -102,6 +114,7 @@ public:
     bool read_mesh(const Entry& e, MeshData* out, std::string* error) const;
     bool read_material(const Entry& e, MaterialData* out, std::string* error) const;
     bool read_rig(const Entry& e, RigData* out, std::string* error) const;
+    bool read_texture(const Entry& e, TextureData* out, std::string* error) const;
 
 private:
     std::vector<uint8_t> bytes_;

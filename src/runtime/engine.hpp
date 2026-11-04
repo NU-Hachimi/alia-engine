@@ -28,6 +28,10 @@
 #include "render/handheld.hpp"
 #include "world/world.hpp"
 
+namespace alia::asset {
+class Pack;
+}
+
 namespace alia::runtime {
 
 struct Config {
@@ -84,13 +88,21 @@ public:
     bool update_material(uint32_t id, const render::Material& m, std::string* error) {
         return pipeline_.update_material(id, m, error);
     }
+    // A material as it is now (to change a field and update_material it back); null when there is none.
+    const render::Material* material(uint32_t id) const { return pipeline_.material(id); }
     uint32_t create_mesh(const render::MeshDesc& desc, std::string* error);
     bool update_mesh(uint32_t id, const render::MeshDesc& desc, std::string* error);
     void destroy_mesh(uint32_t id);
-    // Everything in a resource pack (docs/formats.md): materials first, then the meshes whose parts
-    // name them; name -> id for each. Relative paths are taken from the cart's content directory
-    // (asset::content_path). On an error no mesh is left behind (materials are: they are small and
-    // have no destroy).
+    // Everything in a resource pack (docs/formats.md): textures first, then the materials that name
+    // them, the meshes whose parts name those, and the rigs; name -> id for each. Relative paths are
+    // taken from the cart's content directory (asset::content_path). On an error nothing is left
+    // behind. A material naming a texture the pack doesn't have draws magenta (and says so in the log).
+    struct Assets {
+        std::map<std::string, uint32_t> meshes, materials, textures, rigs;
+    };
+    bool load_assets(const std::string& path, Assets* out, std::string* error);
+    bool load_assets(std::vector<uint8_t> pack_bytes, Assets* out, std::string* error);
+    // The meshes, materials and textures (not the rigs: load_rigs), as before load_assets.
     bool load_pack(const std::string& path, std::map<std::string, uint32_t>* meshes,
                    std::map<std::string, uint32_t>* materials, std::string* error);
     // Every rig in a pack -> world rig ids by name (World::add_rig). Rigs name their meshes; spawning
@@ -129,17 +141,22 @@ public:
     // Textures (docs/textures.md): ids from 1; kLensTexture is the lens's image. A texture loading in
     // the background (load_texture_async) has ready false until poll() uploads it, or an error.
     static constexpr uint32_t kLensTexture = 0xFFFFFFFFu;
+    struct TextureOptions {
+        bool linear = false;   // filter: linear (photos), else nearest (sharp texels)
+        bool repeat = false;   // tiles outside 0..1 (else the edge)
+        bool mipmaps = false;  // a mip chain: no shimmer when seen small (a tiled floor far away); a third more memory
+    };
     struct TextureInfo {
         int width = 0, height = 0;
-        bool linear = false, repeat = false, ready = false;  // repeat: tiles outside 0..1 (else the edge)
+        bool linear = false, repeat = false, mipmaps = false, ready = false;
         std::string error;
+        size_t gpu_bytes() const { return size_t(width) * height * 4 * (mipmaps ? 4 : 3) / 3; }
     };
     // A file relative to the cart's content/ (asset::content_path), whole.
     static bool read_content(const std::string& path, std::vector<uint8_t>* out, std::string* error);
-    uint32_t load_texture(const std::vector<uint8_t>& png_or_jpeg, int max_side, bool linear, std::string* error,
-                          bool repeat = false);
-    uint32_t load_texture_async(std::vector<uint8_t> png_or_jpeg, int max_side, bool linear, bool repeat = false);
-    uint32_t create_texture(int width, int height, const uint8_t* rgba, bool linear, std::string* error, bool repeat = false);
+    uint32_t load_texture(const std::vector<uint8_t>& png_or_jpeg, int max_side, TextureOptions opts, std::string* error);
+    uint32_t load_texture_async(std::vector<uint8_t> png_or_jpeg, int max_side, TextureOptions opts);
+    uint32_t create_texture(int width, int height, const uint8_t* rgba, TextureOptions opts, std::string* error);
     bool update_texture(uint32_t id, const uint8_t* rgba, size_t size, std::string* error);
     // Only a rectangle (x, y from the top-left): w * h * 4 bytes.
     bool update_texture_rect(uint32_t id, int x, int y, int w, int h, const uint8_t* rgba, size_t size, std::string* error);
@@ -191,6 +208,8 @@ private:
     uint32_t next_texture_ = 1;
     size_t texture_bytes_ = 0;
     void upload(uint32_t id, Tex& t, const Image& img);
+    uint32_t new_texture(TextureOptions opts);
+    bool load_assets(const asset::Pack& pack, const std::string& where, bool with_rigs, Assets* out, std::string* error);
     struct Composite {
         bool scene = true, hud = false, snapshot_pending = true;
         int width = 0, height = 0;

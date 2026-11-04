@@ -160,7 +160,33 @@ bool Pack::read_material(const Entry& e, MaterialData* out, std::string* error) 
     m.double_sided = flags & 1;
     m.fog = flags & 2;
     m.ground_fog = flags & 4;
+    if (r.at < r.n) {  // added for textures (T3); packs from before end here
+        m.texture = r.str(r.u16());
+        for (float& v : m.uv_rect) v = r.f32();
+        if (!r.ok) return fail(error, e.name + ": truncated material");
+    }
     *out = m;
+    return true;
+}
+
+bool Pack::read_texture(const Entry& e, TextureData* out, std::string* error) const {
+    if (e.type != EntryType::Texture) return fail(error, e.name + ": not a texture");
+    Reader r{bytes_.data() + e.offset, e.size};
+    TextureData t;
+    t.width = r.u16();
+    t.height = r.u16();
+    t.format = r.u8();
+    const uint8_t flags = r.u8();
+    r.u16();
+    t.size = r.u32();
+    if (!r.ok || !r.need(t.size)) return fail(error, e.name + ": truncated texture");
+    if (t.format != 0) return fail(error, e.name + ": unknown texture format " + std::to_string(t.format));
+    if (t.width == 0 || t.height == 0) return fail(error, e.name + ": bad texture size");
+    t.linear = flags & 1;
+    t.repeat = flags & 2;
+    t.mipmaps = flags & 4;
+    t.data = bytes_.data() + e.offset + r.at;
+    *out = t;
     return true;
 }
 

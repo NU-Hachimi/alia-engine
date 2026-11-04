@@ -145,16 +145,75 @@ bool Engine::update_mesh(uint32_t id, const render::MeshDesc& desc, std::string*
 
 void Engine::destroy_mesh(uint32_t id) { pipeline_.destroy_mesh(*dev_, id); }
 
+bool Engine::load_assets(const std::string& path, Assets* out, std::string* error) {
+    asset::Pack pack;
+    return pack.open(asset::content_path(path), error) && load_assets(pack, path, true, out, error);
+}
+
+bool Engine::load_assets(std::vector<uint8_t> bytes, Assets* out, std::string* error) {
+    asset::Pack pack;
+    return pack.load(std::move(bytes), error) && load_assets(pack, "pack", true, out, error);
+}
+
 bool Engine::load_pack(const std::string& path, std::map<std::string, uint32_t>* meshes,
                        std::map<std::string, uint32_t>* materials, std::string* error) {
     asset::Pack pack;
-    if (!pack.open(asset::content_path(path), error)) return false;
-    std::map<std::string, uint32_t> mats, loaded;
+    Assets a;
+    if (!pack.open(asset::content_path(path), error) || !load_assets(pack, path, false, &a, error)) return false;
+    meshes->insert(a.meshes.begin(), a.meshes.end());
+    materials->insert(a.materials.begin(), a.materials.end());
+    return true;
+}
+
+bool Engine::load_assets(const asset::Pack& pack, const std::string& where, bool with_rigs, Assets* out,
+                         std::string* error) {
+    Assets a;
+    std::vector<asset::RigData> rigs;  // read first: nothing to undo if one is broken
+    for (const asset::Entry& entry : pack.entries()) {
+        if (!with_rigs || entry.type != asset::EntryType::Rig) continue;
+        asset::RigData r;
+        if (!pack.read_rig(entry, &r, error)) {
+            *error = where + ": " + *error;
+            return false;
+        }
+        rigs.push_back(std::move(r));
+    }
     auto fail = [&](const std::string& name) {
-        *error = path + ": " + name + ": " + *error;
-        for (auto& [n, id] : loaded) pipeline_.destroy_mesh(*dev_, id);
+        *error = where + ": " + name + ": " + *error;
+        for (auto& [n, id] : a.meshes) pipeline_.destroy_mesh(*dev_, id);
+        std::string ignored;
+        for (auto& [n, id] : a.materials) pipeline_.destroy_material(id, &ignored);
+        for (auto& [n, id] : a.textures) destroy_texture(id);
         return false;
     };
+    // textures: decoded on as many threads as there are, then uploaded here
+    std::vector<std::pair<const asset::Entry*, asset::TextureData>> texs;
+    for (const asset::Entry& entry : pack.entries()) {
+        if (entry.type != asset::EntryType::Texture) continue;
+        asset::TextureData d;
+        if (!pack.read_texture(entry, &d, error)) return fail(entry.name);
+        texs.emplace_back(&entry, d);
+    }
+    std::vector<std::future<std::pair<Image, std::string>>> decoded;
+    for (auto& [entry, d] : texs)
+        decoded.push_back(std::async(std::launch::async, [d = d]() {
+            Image img;
+            std::string err;
+            if (!decode_image(d.data, d.size, &img, &err)) return std::pair{Image{}, err};
+            return std::pair{shrink(img, kMaxTextureSide), std::string()};
+        }));
+    for (size_t i = 0; i < texs.size(); i++) {
+        auto [img, err] = decoded[i].get();
+        if (img.empty()) {
+            *error = err;
+            for (size_t k = i + 1; k < texs.size(); k++) decoded[k].wait();
+            return fail(texs[i].first->name);
+        }
+        const asset::TextureData& d = texs[i].second;
+        const uint32_t id = new_texture({d.linear, d.repeat, d.mipmaps});
+        upload(id, textures_[id], img);
+        a.textures[texs[i].first->name] = id;
+    }
     for (const asset::Entry& entry : pack.entries()) {
         if (entry.type != asset::EntryType::Material) continue;
         asset::MaterialData d;
@@ -163,20 +222,26 @@ bool Engine::load_pack(const std::string& path, std::map<std::string, uint32_t>*
                            render::Light(d.light),     d.ambient,                     d.diffuse,
                            d.emissive,                 render::AlphaMode(d.alpha_mode), d.opacity,
                            d.double_sided,             d.fog,                         d.ground_fog};
+        if (!d.texture.empty()) {
+            auto it = a.textures.find(d.texture);
+            if (it != a.textures.end()) m.texture = it->second;
+            else ALIA_WARN("%s: material %s: no texture %s in the pack (magenta)", where.c_str(), entry.name.c_str(), d.texture.c_str());
+        }
+        m.uv_rect = {d.uv_rect[0], d.uv_rect[1], d.uv_rect[2], d.uv_rect[3]};
         uint32_t id = pipeline_.create_material(m, error);
         if (!id) return fail(entry.name);
-        mats[entry.name] = id;
+        a.materials[entry.name] = id;
     }
     for (const asset::Entry& entry : pack.entries()) {
-        if (entry.type != asset::EntryType::Mesh) continue;  // other types are for other loaders
+        if (entry.type != asset::EntryType::Mesh) continue;
         asset::MeshData m;
         if (!pack.read_mesh(entry, &m, error)) return fail(entry.name);
         std::vector<render::Submesh> subs;
         for (const asset::SubmeshData& sub : m.submeshes) {
             uint32_t material = 0;
             if (!sub.material.empty()) {
-                auto it = mats.find(sub.material);
-                if (it == mats.end()) {
+                auto it = a.materials.find(sub.material);
+                if (it == a.materials.end()) {
                     *error = "no material " + sub.material + " in the pack";
                     return fail(entry.name);
                 }
@@ -186,11 +251,17 @@ bool Engine::load_pack(const std::string& path, std::map<std::string, uint32_t>*
         }
         uint32_t id = pipeline_.create_mesh(*dev_, {m.positions, m.indices, m.tri_palette, m.vertex_rgb, m.double_sided, subs, m.uv}, error);
         if (!id) return fail(entry.name);
-        loaded[entry.name] = id;
+        a.meshes[entry.name] = id;
     }
-    meshes->insert(loaded.begin(), loaded.end());
-    materials->insert(mats.begin(), mats.end());
-    for (auto& [name, id] : loaded) mesh_names_[name] = id;
+    for (auto& [name, id] : a.meshes) mesh_names_[name] = id;
+    for (asset::RigData& r : rigs) {  // after the meshes they name
+        std::string name = r.name;
+        a.rigs[name] = world_.add_rig(std::move(r));
+    }
+    out->meshes.insert(a.meshes.begin(), a.meshes.end());
+    out->materials.insert(a.materials.begin(), a.materials.end());
+    out->textures.insert(a.textures.begin(), a.textures.end());
+    out->rigs.insert(a.rigs.begin(), a.rigs.end());
     return true;
 }
 
@@ -280,13 +351,13 @@ void Engine::hud_image(uint32_t id, float x, float y, float w, float h, bool fit
 void Engine::upload(uint32_t id, Tex& t, const Image& img) {
     if (t.handle) {
         dev_->destroy(t.handle);
-        texture_bytes_ -= size_t(t.info.width) * t.info.height * 4;
+        texture_bytes_ -= t.info.gpu_bytes();
     }
     t.handle = dev_->create_texture({img.width, img.height, rhi::Format::RGBA8,
                                      t.info.linear ? rhi::Filter::Linear : rhi::Filter::Nearest, img.rgba.data(),
-                                     t.info.repeat ? rhi::Wrap::Repeat : rhi::Wrap::Clamp});
+                                     t.info.repeat ? rhi::Wrap::Repeat : rhi::Wrap::Clamp, t.info.mipmaps});
     t.info.width = img.width, t.info.height = img.height, t.info.ready = true, t.info.error.clear();
-    texture_bytes_ += size_t(img.width) * img.height * 4;
+    texture_bytes_ += t.info.gpu_bytes();
     pipeline_.bind_texture(id, t.handle, t.info.linear);  // materials that name it
 }
 
@@ -393,20 +464,24 @@ bool Engine::read_content(const std::string& path, std::vector<uint8_t>* out, st
     return true;
 }
 
-uint32_t Engine::load_texture(const std::vector<uint8_t>& bytes, int max_side, bool linear, std::string* error, bool repeat) {
-    Image img;
-    if (!decode_image(bytes.data(), bytes.size(), &img, error)) return 0;
+uint32_t Engine::new_texture(TextureOptions opts) {
     const uint32_t id = next_texture_++;
-    Tex& t = textures_[id];
-    t.info.linear = linear, t.info.repeat = repeat;
-    upload(id, t, shrink(img, clamp_side(max_side)));
+    TextureInfo& i = textures_[id].info;
+    i.linear = opts.linear, i.repeat = opts.repeat, i.mipmaps = opts.mipmaps;
     return id;
 }
 
-uint32_t Engine::load_texture_async(std::vector<uint8_t> bytes, int max_side, bool linear, bool repeat) {
-    const uint32_t id = next_texture_++;
+uint32_t Engine::load_texture(const std::vector<uint8_t>& bytes, int max_side, TextureOptions opts, std::string* error) {
+    Image img;
+    if (!decode_image(bytes.data(), bytes.size(), &img, error)) return 0;
+    const uint32_t id = new_texture(opts);
+    upload(id, textures_[id], shrink(img, clamp_side(max_side)));
+    return id;
+}
+
+uint32_t Engine::load_texture_async(std::vector<uint8_t> bytes, int max_side, TextureOptions opts) {
+    const uint32_t id = new_texture(opts);
     Tex& t = textures_[id];
-    t.info.linear = linear, t.info.repeat = repeat;
     const int side = clamp_side(max_side);
     t.pending = std::async(std::launch::async, [bytes = std::move(bytes), side]() {
         Image img;
@@ -417,7 +492,7 @@ uint32_t Engine::load_texture_async(std::vector<uint8_t> bytes, int max_side, bo
     return id;
 }
 
-uint32_t Engine::create_texture(int width, int height, const uint8_t* rgba, bool linear, std::string* error, bool repeat) {
+uint32_t Engine::create_texture(int width, int height, const uint8_t* rgba, TextureOptions opts, std::string* error) {
     if (width <= 0 || height <= 0 || width > kMaxTextureSide || height > kMaxTextureSide) {
         *error = "texture size: 1.." + std::to_string(kMaxTextureSide) + " on each side";
         return 0;
@@ -425,10 +500,8 @@ uint32_t Engine::create_texture(int width, int height, const uint8_t* rgba, bool
     Image img;
     img.width = width, img.height = height;
     img.rgba.assign(rgba, rgba + size_t(width) * height * 4);
-    const uint32_t id = next_texture_++;
-    Tex& t = textures_[id];
-    t.info.linear = linear, t.info.repeat = repeat;
-    upload(id, t, img);
+    const uint32_t id = new_texture(opts);
+    upload(id, textures_[id], img);
     return id;
 }
 
@@ -473,7 +546,7 @@ void Engine::destroy_texture(uint32_t id) {
     if (it->second.pending.valid()) it->second.pending.wait();
     if (it->second.handle) {
         dev_->destroy(it->second.handle);
-        texture_bytes_ -= size_t(it->second.info.width) * it->second.info.height * 4;
+        texture_bytes_ -= it->second.info.gpu_bytes();
     }
     pipeline_.unbind_texture(id);  // materials that name it draw white
     textures_.erase(it);

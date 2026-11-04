@@ -7,8 +7,8 @@ little-endian, so arrays are read as they are.
 ## Resource pack `.apak`, version 1 (2026-10-29)
 
 Written by `tools/alia_pack.py` (pure Python), read by `src/asset/pack.cpp`; in a game:
-`meshes, materials = engine.load_pack("gen/meshes.apak")` (or `engine.load_meshes(...)` for the meshes) gives
-`{name: id}`. Relative paths are taken from the cart's
+`assets = engine.load_assets("gen/meshes.apak")` gives everything by name (`.meshes`, `.materials`, `.textures`,
+`.rigs`); `meshes, materials = engine.load_pack(...)` (or `engine.load_meshes(...)` for the meshes) gives `{name: id}`. Relative paths are taken from the cart's
 `content/` (`$ALIA_CART_DIR/content`), or from the working directory when there is no cart.
 
 ```
@@ -53,11 +53,16 @@ f32 ambient  f32 diffuse        negative: the light's own values
 f32 emissive                    0..1
 u8 alpha mode (0 opaque, 1 blend, 2 cutout)  u8 flags (bit 0 double-sided, bit 1 fog, bit 2 ground fog)  u16 0
 f32 opacity                     0..1, blend only
+str texture                     u16 length + UTF-8: a texture entry of the same pack ("" none)
+f32 uv_rect[4]                  u0, v0, u1, v1: the part of the texture the mesh's uv 0..1 cover
 ```
 
-A textured material (colour 2) in a pack has no texture yet: the game sets one (`material.texture = tex`,
-`update_material`) until packs hold textures too (docs/textures.md T3). Meshes name materials of the same pack. The engine loads every material first; a part naming a material the pack
-doesn't have is an error (the writer checks it too).
+The texture name and `uv_rect` were added on 2026-11-04 (docs/textures.md T3a) after the first version's fields, so
+an engine from before them reads the rest and stops there; a material without them (an older pack) has no texture
+(magenta until the game sets one) and the whole texture as its `uv_rect`. A material naming a texture the pack
+doesn't have draws magenta, with a warning in the log (the writer refuses it). Meshes name materials of the same
+pack. The engine loads the textures first, then every material, then the meshes; a part naming a material the
+pack doesn't have is an error (the writer checks it too). On an error nothing of the pack is left loaded.
 
 ### Type 3: rig (docs/api.md §4)
 
@@ -80,10 +85,23 @@ Meshes are named, not stored: the engine resolves them against the meshes loaded
 `tools/alia_pack.py` `add_rig()` takes the shape of Megalith's `assets/rigs/*.json` (colliders as `{"type", "c" or "a"/"b",
 "r", "layers", "user", "priority"}`); keys the engine doesn't use (hp, tags, hookable) are left out.
 
+### Type 4: texture (docs/textures.md §4)
+
+```
+u16 width  u16 height           from the image's header (the writer reads it)
+u8 format                       0: a PNG or JPEG file as it was given, decoded when the pack is loaded
+u8 flags                        bit 0 linear filter (else nearest), bit 1 repeat (else clamp), bit 2 mipmaps
+u16 0
+u32 size, then the file's bytes
+```
+
+Bigger than 2048 on the longer side is scaled down when loaded. The textures of a pack are decoded on several
+threads. Still to come in this entry: ETC2 (a new format value, docs/textures.md T3c) and an atlas's regions (T3b).
+
 **Not quantized yet.** The architecture (§1, §3) plans 16–24-byte vertices for the board's memory bandwidth.
 The E2 budget (§6.2) shows no game needs it yet (Megalith draws about a thousand triangles), and float positions
 keep pictures identical to the source. When a game's vertex bandwidth shows up in `alia-bench`, a mesh entry
 with int16 positions (per-mesh scale and offset) and packed normals becomes a new colour/position mode, with the
 GPU vertex format to match.
 
-Still to come: textures in packs (ETC2 in KTX2) and a material's texture by name (docs/textures.md T3).
+Still to come: atlases and ETC2 in the texture entry (docs/textures.md T3b, T3c).

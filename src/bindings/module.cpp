@@ -392,6 +392,15 @@ uint32_t texture_id(nb::handle t) {
     return nb::cast<uint32_t>(t);
 }
 
+// What load_assets gives: plain dicts by name (docs/textures.md §4).
+struct PyAssets {
+    nb::dict meshes, materials, textures, rigs;
+};
+
+runtime::Engine::TextureOptions texture_options(const std::string& filter, const std::string& wrap, bool mipmaps) {
+    return {linear_filter(filter), repeat_wrap(wrap), mipmaps};
+}
+
 struct PyPhoto {
     nb::object engine_obj;
     uint32_t id;
@@ -1065,6 +1074,16 @@ NB_MODULE(alia_engine, m) {
             if (!r->done || r->error.empty()) return nb::none();
             return nb::str(r->error.c_str());
         });
+    nb::class_<PyAssets>(m, "Assets", "What e.load_assets(pack) gives: plain dicts by name.")
+        .def_ro("meshes", &PyAssets::meshes, "{name: mesh id}")
+        .def_ro("materials", &PyAssets::materials, "{name: material id}")
+        .def_ro("textures", &PyAssets::textures, "{name: Texture}")
+        .def_ro("rigs", &PyAssets::rigs, "{name: Rig}")
+        .def("__repr__", [](PyAssets& a) {
+            return "<Assets: " + std::to_string(a.meshes.size()) + " meshes, " + std::to_string(a.materials.size()) +
+                   " materials, " + std::to_string(a.textures.size()) + " textures, " + std::to_string(a.rigs.size()) + " rigs>";
+        });
+
     nb::class_<PyTexture>(m, "Texture",
                           "A texture (docs/textures.md): an image on the GPU, for hud_image (and, later, materials); Engine.lens.texture is the camera's image.")
         .def_prop_ro("width", [](PyTexture& t) { auto* i = t.info(); return t.id == runtime::Engine::kLensTexture ? t.e().lens().image_width() : i ? i->width : 0; })
@@ -1581,6 +1600,13 @@ NB_MODULE(alia_engine, m) {
              },
              "id"_a, "material"_a, "Changes light, emissive, alpha, fog ... for meshes already built; shading, "
              "color and palette_index only for meshes built afterwards.")
+        .def("material",
+             [](PyEngine& e, uint32_t id) {
+                 const render::Material* m = e.get().material(id);
+                 if (!m) throw nb::value_error("no such material");
+                 return *m;
+             },
+             "id"_a, "A copy of material `id` as it is now: change a field, then update_material(id, m).")
         .def("destroy_material",
              [](PyEngine& e, uint32_t id) {
                  std::string err;
@@ -1663,6 +1689,31 @@ NB_MODULE(alia_engine, m) {
              "source"_a,
              "Every rig in a resource pack (a path, or the pack's bytes, e.g. alia_pack.PackWriter().bytes() for "
              "rigs made in code) -> {name: Rig}. Load the meshes they name first (load_pack).")
+        .def("load_assets",
+             [](nb::object self, nb::handle source) {
+                 PyEngine& e = nb::cast<PyEngine&>(self);
+                 runtime::Engine::Assets a;
+                 std::string err;
+                 bool ok;
+                 if (nb::isinstance<nb::bytes>(source)) {
+                     auto b = nb::cast<nb::bytes>(source);
+                     const auto* p = reinterpret_cast<const uint8_t*>(b.data());
+                     ok = e.get().load_assets(std::vector<uint8_t>(p, p + b.size()), &a, &err);
+                 } else {
+                     ok = e.get().load_assets(nb::cast<std::string>(source), &a, &err);
+                 }
+                 if (!ok) throw std::runtime_error("alia_engine: " + err);
+                 PyAssets out;
+                 for (auto& [name, id] : a.meshes) out.meshes[name.c_str()] = id;
+                 for (auto& [name, id] : a.materials) out.materials[name.c_str()] = id;
+                 for (auto& [name, id] : a.textures) out.textures[name.c_str()] = PyTexture{self, id};
+                 for (auto& [name, id] : a.rigs) out.rigs[name.c_str()] = PyRig{self, id};
+                 return out;
+             },
+             "source"_a,
+             "Everything in a resource pack (a path as load_pack, or the pack's bytes) -> Assets: .meshes and "
+             ".materials {name: id}, .textures {name: Texture}, .rigs {name: Rig}. Materials that name a texture "
+             "come with it (docs/textures.md §4).")
         .def("load_pack",
              [](PyEngine& e, const std::string& path) {
                  std::map<std::string, uint32_t> meshes, materials;
@@ -1670,7 +1721,9 @@ NB_MODULE(alia_engine, m) {
                  if (!e.get().load_pack(path, &meshes, &materials, &err)) throw std::runtime_error("alia_engine: " + err);
                  return std::make_pair(meshes, materials);
              },
-             "path"_a, "Everything in a resource pack -> ({mesh name: id}, {material name: id}); paths as load_meshes.")
+             "path"_a, "The meshes and materials in a resource pack -> ({mesh name: id}, {material name: id}); its "
+             "textures are loaded too (materials come with theirs), its rigs aren't (load_rigs). load_assets gives "
+             "everything. Paths as load_meshes.")
         .def("load_meshes",
              [](PyEngine& e, const std::string& path) {
                  std::map<std::string, uint32_t> out;
@@ -1705,38 +1758,40 @@ NB_MODULE(alia_engine, m) {
              "x"_a, "y"_a, "text"_a, "color"_a = 0xFFFFFFFFu, "scale"_a = 1.0f, "shadow"_a = 0u,
              "5x7 text (ASCII), 6 * scale pixels per character; shadow: 0xRRGGBBAA drop shadow, 0 for none.")
         .def("load_texture",
-             [](nb::object self, nb::handle source, int max_size, const std::string& filter, const std::string& wrap) {
+             [](nb::object self, nb::handle source, int max_size, const std::string& filter, const std::string& wrap, bool mipmaps) {
                  PyEngine& e = nb::cast<PyEngine&>(self);
                  std::string err;
-                 uint32_t id = e.get().load_texture(image_source(source), max_size, linear_filter(filter), &err, repeat_wrap(wrap));
+                 uint32_t id = e.get().load_texture(image_source(source), max_size, texture_options(filter, wrap, mipmaps), &err);
                  if (!id) throw std::runtime_error("alia_engine: " + err);
                  return PyTexture{self, id};
              },
-             "source"_a, "max_size"_a = 2048, "filter"_a = "nearest", "wrap"_a = "clamp",
+             "source"_a, "max_size"_a = 2048, "filter"_a = "nearest", "wrap"_a = "clamp", "mipmaps"_a = false,
              "A PNG or JPEG: a path in the cart's content/, or bytes (ae.save.read(...)). Bigger than max_size "
              "(the longer side, at most 2048): scaled down. filter: 'nearest' (sharp pixels) or 'linear' (photos); wrap: "
-             "'clamp' or 'repeat' (tiles on a mesh: ground, walls).")
+             "'clamp' or 'repeat' (tiles on a mesh: ground, walls); mipmaps: no shimmer where it's seen small (a "
+             "tiled floor far away), a third more memory.")
         .def("load_texture_async",
-             [](nb::object self, nb::handle source, int max_size, const std::string& filter, const std::string& wrap) {
+             [](nb::object self, nb::handle source, int max_size, const std::string& filter, const std::string& wrap, bool mipmaps) {
                  PyEngine& e = nb::cast<PyEngine&>(self);
-                 return PyTexture{self, e.get().load_texture_async(image_source(source), max_size, linear_filter(filter),
-                                                                   repeat_wrap(wrap))};
+                 return PyTexture{self, e.get().load_texture_async(image_source(source), max_size,
+                                                                   texture_options(filter, wrap, mipmaps))};
              },
-             "source"_a, "max_size"_a = 2048, "filter"_a = "nearest", "wrap"_a = "clamp",
+             "source"_a, "max_size"_a = 2048, "filter"_a = "nearest", "wrap"_a = "clamp", "mipmaps"_a = false,
              "As load_texture, decoded on another thread (a big photo takes about a second on the handheld): "
              "the Texture is .done after a few frames, then .ready or .error.")
         .def("create_texture",
-             [](nb::object self, int w, int h, const nb::bytes& rgba, const std::string& filter, const std::string& wrap) {
+             [](nb::object self, int w, int h, const nb::bytes& rgba, const std::string& filter, const std::string& wrap, bool mipmaps) {
                  PyEngine& e = nb::cast<PyEngine&>(self);
                  if (rgba.size() != size_t(w) * size_t(h) * 4) throw nb::value_error("rgba: width * height * 4 bytes");
                  std::string err;
-                 uint32_t id = e.get().create_texture(w, h, reinterpret_cast<const uint8_t*>(rgba.data()), linear_filter(filter),
-                                                      &err, repeat_wrap(wrap));
+                 uint32_t id = e.get().create_texture(w, h, reinterpret_cast<const uint8_t*>(rgba.data()),
+                                                      texture_options(filter, wrap, mipmaps), &err);
                  if (!id) throw nb::value_error(err.c_str());
                  return PyTexture{self, id};
              },
-             "width"_a, "height"_a, "rgba"_a, "filter"_a = "nearest", "wrap"_a = "clamp",
-             "A texture from RGBA8 bytes, top row first. wrap 'repeat': it tiles where a mesh's uv goes past 0..1.")
+             "width"_a, "height"_a, "rgba"_a, "filter"_a = "nearest", "wrap"_a = "clamp", "mipmaps"_a = false,
+             "A texture from RGBA8 bytes, top row first. wrap 'repeat': it tiles where a mesh's uv goes past 0..1; "
+             "mipmaps as load_texture (made again after each update).")
         .def("hud_image",
              [](PyEngine& e, PyTexture& t, float x, float y, float w, float h, bool fit, uint32_t color,
                 std::optional<std::array<float, 4>> src) {

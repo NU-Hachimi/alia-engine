@@ -297,7 +297,7 @@ class Sandbox:
         crate_tex = e.create_texture(16, 16, image(16, planks))
         grey_tex = e.create_texture(16, 16, image(16, grey))
         leaf_tex = e.create_texture(16, 16, image(16, leaves))
-        tile_tex = e.create_texture(8, 8, image(8, tiles), wrap="repeat")
+        tile_tex = e.create_texture(8, 8, image(8, tiles), wrap="repeat", mipmaps=True)  # no shimmer far away
         self.screen_tex = e.create_texture(32, 16, bytes(32 * 16 * 4))
         crate = e.create_mesh(kit.textured_box(1.4, 1.4, 1.4, e.create_material(M(color=T, texture=crate_tex))))
         tinted = e.create_mesh(kit.textured_box(1.0, 1.0, 1.0, e.create_material(M(color=T, texture=grey_tex))))

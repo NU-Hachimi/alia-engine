@@ -110,8 +110,9 @@ ae.run(Game(), argv=sys.argv[1:], title="Game", fixed_hz=60, app_id="com.example
 |---|---|
 | `e.input` | `Input`：`held`、`pressed`（按位置的按键位：`ae.SOUTH/EAST/WEST/NORTH/L1/R1/L2/R2/L3/R3/SELECT/START/UP/DOWN/LEFT/RIGHT`）、`lx ly rx ry`（-1..1，y 向下）、`lt rt`、`gamepad` |
 | `e.create_mesh(ae.Mesh(positions, indices, tri_palette=…, vertex_rgb=…, double_sided=False, submeshes=[…]))` → id | 几何用 bytes（`array('f')`、`array('H')`）；`update_mesh(id, mesh)`、`destroy_mesh(id)`；分段和材质见 §2 |
-| `e.create_material(ae.Material(...))` → id、`e.update_material(id, m)`、`e.destroy_material(id)` | §2；`destroy_material` 只收没有网格在用的（先 `destroy_mesh`），id 以后可能给新材质（main 上新加的） |
-| `e.load_pack(path)` → `({网格名: id}, {材质名: id})`、`e.load_meshes(path)` → `{网格名: id}` | 资源包 `.apak`；相对路径取卡带的 `content/` |
+| `e.create_material(ae.Material(...))` → id、`e.update_material(id, m)`、`e.material(id)`、`e.destroy_material(id)` | §2；`e.material(id)` 读回一份材质（改一个字段再 `update_material`）；`destroy_material` 只收没有网格在用的（先 `destroy_mesh`），id 以后可能给新材质（main 上新加的） |
+| `e.load_assets(path 或 bytes)` → `Assets`：`.meshes`、`.materials`（`{名字: id}`）、`.textures`（`{名字: Texture}`）、`.rigs`（`{名字: Rig}`） | 资源包里的全部东西，材质带着它们的纹理（`docs/textures.md` §4，main 上新加的） |
+| `e.load_pack(path)` → `({网格名: id}, {材质名: id})`、`e.load_meshes(path)` → `{网格名: id}` | 资源包 `.apak`；相对路径取卡带的 `content/`；包里的纹理也加载、接到材质上，rig 不加载（`load_rigs`） |
 | `e.set_palette(rgb_bytes)` | 32 色调色板：最多 32 个 RGB 三元组（`bytes(r, g, b, r, g, b, …)`），索引 0 起。**不调也有一套默认的**（0 黑、1 白、2–5 灰、6 红、7 橙、8 黄、9 黄绿、10 绿、11 青、12 蓝、13 藏青、14 紫、15 品红、16 粉、17 棕、18 棕褐、19 米白、20 草绿、21 深绿、22 石灰、23 石板、24 天蓝、25 暮蓝、26–31 发光用的亮黄、珊瑚、亮青、亮黄绿、亮粉、近白）；有自己画风的游戏换掉它 |
 | `e.world`、`e.actions`、`e.audio`、`e.rumble(...)` | 世界（§3）、输入动作和声音（§7）；常用的相机、角色控制器在 `alia_kit`（§7.1） |
 | `e.particles(...)` | 粒子模板（§6） |
@@ -119,7 +120,7 @@ ae.run(Game(), argv=sys.argv[1:], title="Game", fixed_hz=60, app_id="com.example
 | `e.draw(mesh, model, tint=0, light=ae.Light.MATERIAL, fade=0, ground_fog=True)` | 本帧画一个实例；`model`：行主序 3×4（12 个数）；其余参数是实例覆盖（§2） |
 | `e.hud_rect(x, y, w, h, color)`、`e.hud_text(x, y, text, color, scale, shadow)` | 场景像素坐标，颜色 0xRRGGBBAA |
 | `e.lens`、`e.hud_lens(x, y, w, h, fit=False, color=…)` | 掌机的相机（`docs/camera.md`，main 上新加的）：打开、状态、拍照（可以连游戏画面一起拍：照片模式）；相机画面画进 HUD 的框里 |
-| `e.load_texture(path 或 bytes, max_size=2048, filter="nearest")`、`e.load_texture_async(...)`、`e.create_texture(w, h, rgba)`、`e.hud_image(tex, x, y, w, h, fit=False, color=…, src=None)` | 纹理和 HUD 里的图片（`docs/textures.md`，main 上新加的）：PNG / JPEG；材质用纹理是下一步 |
+| `e.load_texture(path 或 bytes, max_size=2048, filter="nearest", wrap="clamp", mipmaps=False)`、`e.load_texture_async(...)`、`e.create_texture(w, h, rgba, ...)`、`e.hud_image(tex, x, y, w, h, fit=False, color=…, src=None)` | 纹理和 HUD 里的图片（`docs/textures.md`，main 上新加的）：PNG / JPEG；资源包里的纹理用 `load_assets` |
 | `e.screenshot(path)`、`e.scene_size`、`e.stats`、`e.describe()` | `scene_size`：场景（HUD）像素，默认 (640, 360) |
 
 `e.frame` 的字段（颜色是 0xRRGGBB 的整数；距离是米；角度是弧度）：
@@ -145,6 +146,7 @@ rune = e.create_mesh(ae.Mesh(positions, indices, tri_palette=colors,
                              submeshes=[(0, 10, 0), (10, 4, glow)]))   # (first_tri, tri_count, material id)
 meshes, materials = e.load_pack("gen/props.apak")                     # 或者放进资源包（formats.md 类型 2）
 e.update_material(glass, ae.Material(...))
+m = e.material(glass); m.opacity = 0.8; e.update_material(glass, m)  # 读回来只改一个字段
 crate = e.create_material(ae.Material(color=ae.ColorSource.TEXTURE, texture=e.load_texture("art/crate.png")))
 box = e.create_mesh(kit.textured_box(1, 1, 1, crate))                 # 网格要有 uv（ae.Mesh(..., uv=...)）；docs/textures.md
 ```
@@ -467,7 +469,7 @@ kit.pal.RED, kit.pal.GRASS, ...        # 默认调色板的索引（网格、tin
 
 ## 8. 还没有的（以后）
 
-- **纹理的其余部分**：纹理对象、HUD 里的图片、带纹理的材质已经有了（main 上）；资源包里的纹理、ETC2、图集按 `docs/textures.md` 的 T3 做。
+- **纹理的其余部分**：纹理对象、HUD 里的图片、带纹理的材质、资源包里的纹理和 mipmap 已经有了（main 上）；图集、ETC2、公告板粒子按 `docs/textures.md` 的 T3 做。
 - **公告板粒子、光晕粒子**：老掌机（PS1、N64、PSP）的做法是**加法混合的公告板**：朝相机的小方块，贴一张中心亮、边缘透明的径向渐变，颜色直接加在背后的像素上。比半透明的壳便宜得多：两个三角形；加法和顺序无关，所以不用排序、一个模板仍然一次 instanced draw；开销只在填充率（估计 1000 个、每个约 20×20 像素，约 1.7 个全屏层，板上约 0.6 ms）。要做的三件事：材质加 `AlphaMode.ADD`（加法的部分也走实例化、不排序）；粒子系统里让方块朝相机；软边的贴图（等纹理），或者不用纹理的替代：中心亮、边缘为 0 的小圆盘，靠顶点颜色带一个亮度。现在的"发光"只是材质的 emissive + 不受雾影响（sandbox 的发光球）。
 - **粒子的其他部分**：子发射器（死亡、落地时触发另一个发射器）、从资源包读模板、粒子和碰撞体的碰撞。
 - **字体**：HUD 只有一套内置的 5×7 像素字体，只有 ASCII。要显示中文，得先做字体：资源包里的位图字体（一张字形图集 + 字符表），打包时只烘焙游戏用到的汉字（掌机上整套 CJK 太大），像素风的 CJK 字体（比如 12 px，要挑许可合适的）。和 E7 的 2D 一起做（`architecture.md` §6.3）。

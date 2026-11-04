@@ -5,6 +5,11 @@ import zlib
 
 
 def pixel(path, x, y):
+    return pixels(path)(x, y)
+
+
+def pixels(path):
+    """The whole screenshot decoded once -> a function (x, y) -> (r, g, b), for reading many pixels."""
     data = open(path, "rb").read()
     w, h = struct.unpack(">2I", data[16:24])
     idat, pos = b"", 8
@@ -26,7 +31,7 @@ def pixel(path, x, y):
             line[k] = (line[k] + (0, a, b, (a + b) // 2, pr)[f]) & 0xFF
         rows.append(line)
         prev = line
-    return tuple(rows[y][x * 4:x * 4 + 3])
+    return lambda x, y: tuple(rows[y][x * 4:x * 4 + 3])
 
 
 def near(a, b, tol=6):

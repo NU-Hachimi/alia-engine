@@ -52,6 +52,9 @@ struct TextureDesc {
     Filter filter = Filter::Nearest;
     const void* pixels = nullptr;  // RGBA8: top row first; R8: bytes; 16F: floats; may be null
     Wrap wrap = Wrap::Clamp;
+    // RGBA8 only: a mip chain, made from the pixels (and again after each update), so a texture seen small and
+    // far away (a tiled floor) doesn't shimmer; a third more memory.
+    bool mipmaps = false;
 };
 
 // A Linux dmabuf holding one 8-bit plane (DRM_FORMAT_R8), imported without a copy (camera frames).

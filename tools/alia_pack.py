@@ -8,10 +8,13 @@ a game's build scripts import it on the PC to bake their assets.
     w.add_mesh("ground", positions, indices, vertex_rgb=rgb)     # default material: smooth, RGB per vertex
     w.add_material("glow", shading="unlit", palette_index=9, emissive=1.0, fog=False)
     w.add_mesh("rune", positions, indices, tri_palette=colors, submeshes=[(0, 10, ""), (10, 4, "glow")])
+    w.add_texture("crate", "art/crate.png")                      # a PNG or JPEG (path or bytes), stored as it is
+    w.add_material("crate", color="texture", texture="crate")    # materials name textures of the same pack
     w.write("gen/meshes.apak")                                   # or w.bytes()
 
-The game loads it with alia_engine: `meshes, materials = engine.load_pack("gen/meshes.apak")`, or
-`engine.load_meshes(...)` for the meshes alone. Material fields: docs/api.md §2.
+The game loads it with alia_engine: `assets = engine.load_assets("gen/meshes.apak")` (.meshes, .materials,
+.textures, .rigs by name), or `meshes, materials = engine.load_pack(...)`. Material fields: docs/api.md §2;
+textures: docs/textures.md.
 """
 
 import struct
@@ -21,10 +24,12 @@ VERSION = 1
 MESH = 1
 MATERIAL = 2
 RIG = 3
+TEXTURE = 4
 _HEADER = struct.Struct("<4sHHII")   # magic, version, reserved, entry count, directory offset
 _DIR = struct.Struct("<BBHII")       # type, flags, name length, offset, size
 _MESH = struct.Struct("<IIBBH")      # vertices, triangles, colours (bit0 palette, bit1 rgb), flags (bit0 double-sided, bit1 parts)
 _MATERIAL = struct.Struct("<BBBBfffBBHf")
+_TEXTURE = struct.Struct("<HHBBHI")  # width, height, format (0: PNG / JPEG file), flags (linear, repeat, mipmaps), 0, size
 SHADING = {"flat": 0, "smooth": 1, "unlit": 2}
 COLOR = {"palette": 0, "vertex": 1, "texture": 2}
 LIGHT = {"sun": 0, "character": 1}
@@ -35,6 +40,23 @@ class PackError(ValueError):
     pass
 
 
+def image_size(data):
+    """(width, height) of PNG or JPEG bytes, from the header; None when it is neither."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
+        return struct.unpack(">II", data[16:24])
+    if data[:2] == b"\xff\xd8":
+        at = 2
+        while at + 9 < len(data):
+            if data[at] != 0xFF:
+                return None
+            marker, length = data[at + 1], struct.unpack(">H", data[at + 2:at + 4])[0]
+            if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):  # SOFn
+                h, w = struct.unpack(">HH", data[at + 5:at + 9])
+                return w, h
+            at += 2 + length
+    return None
+
+
 def _pad4(data):
     return data + bytes(-len(data) % 4)
 
@@ -43,21 +65,48 @@ class PackWriter:
     def __init__(self):
         self.entries = []  # (type, name, payload)
 
+    def add_texture(self, name, image, filter="nearest", wrap="clamp", mipmaps=False):
+        """A texture (docs/textures.md §4): `image` is a PNG or JPEG, a path or its bytes, stored as it is and
+        decoded when the pack is loaded (at most 2048 on the longer side, bigger is scaled down). filter
+        'nearest' or 'linear', wrap 'clamp' or 'repeat', mipmaps as e.load_texture. Materials of the same pack
+        name it (add_material(texture=name))."""
+        if isinstance(image, str):
+            with open(image, "rb") as f:
+                image = f.read()
+        image = bytes(image)
+        size = image_size(image)
+        if not size or not all(0 < v < 65536 for v in size):
+            raise PackError(f"{name}: not a PNG or JPEG")
+        if filter not in ("nearest", "linear") or wrap not in ("clamp", "repeat"):
+            raise PackError(f"{name}: filter 'nearest' or 'linear', wrap 'clamp' or 'repeat'")
+        if any(n == name and t == TEXTURE for t, n, _ in self.entries):
+            raise PackError(f"{name}: duplicate texture")
+        flags = (1 if filter == "linear" else 0) | (2 if wrap == "repeat" else 0) | (4 if mipmaps else 0)
+        self.entries.append((TEXTURE, name, _TEXTURE.pack(*size, 0, flags, 0, len(image)) + image))
+
     def add_material(self, name, shading="flat", color="palette", palette_index=0, light="sun", ambient=-1.0,
                      diffuse=-1.0, emissive=0.0, alpha_mode="opaque", opacity=1.0, double_sided=False, fog=True,
-                     ground_fog=True):
-        """A material (docs/api.md §2); meshes in the same pack name it in their submeshes."""
+                     ground_fog=True, texture="", uv_rect=(0.0, 0.0, 1.0, 1.0)):
+        """A material (docs/api.md §2); meshes in the same pack name it in their submeshes. color='texture':
+        `texture` names a texture of the same pack (add_texture), uv_rect the part of it the mesh's uv cover."""
         try:
             fields = (SHADING[shading], COLOR[color], int(palette_index), LIGHT[light])
         except KeyError as error:
             raise PackError(f"{name}: unknown value {error}") from None
         if not 0 <= palette_index < 32 or not 0 <= emissive <= 1 or not 0 <= opacity <= 1 or alpha_mode not in ALPHA:
-            raise PackError(f"{name}: palette_index 0..31, emissive and opacity 0..1, alpha_mode opaque or blend")
+            raise PackError(f"{name}: palette_index 0..31, emissive and opacity 0..1, alpha_mode opaque, blend or cutout")
+        if texture and color != "texture":
+            raise PackError(f"{name}: texture= needs color='texture'")
+        if len(uv_rect) != 4:
+            raise PackError(f"{name}: uv_rect is (u0, v0, u1, v1)")
         if any(n == name and t == MATERIAL for t, n, _ in self.entries):
             raise PackError(f"{name}: duplicate material")
         flags = (1 if double_sided else 0) | (2 if fog else 0) | (4 if ground_fog else 0)
+        raw = texture.encode()
+        # the texture name and uv_rect come after the first version's fields: older engines stop before them
         self.entries.append((MATERIAL, name, _MATERIAL.pack(*fields, ambient, diffuse, emissive, ALPHA[alpha_mode],
-                                                            flags, 0, opacity)))
+                                                            flags, 0, opacity)
+                             + struct.pack("<H", len(raw)) + raw + struct.pack("<4f", *uv_rect)))
 
     def add_mesh(self, name, positions, indices, tri_palette=None, vertex_rgb=None, double_sided=False,
                  submeshes=None, uv=None):
@@ -199,8 +248,16 @@ class PackWriter:
         self.entries.append((RIG, name, bytes(out)))
 
     def check(self):
-        """Every submesh names a material in this pack (the engine checks the same when loading)."""
+        """Every submesh names a material in this pack (the engine checks the same when loading), and every
+        material's texture is in it (the engine would draw it magenta)."""
         materials = {n for t, n, _ in self.entries if t == MATERIAL}
+        textures = {n for t, n, _ in self.entries if t == TEXTURE}
+        for kind, name, payload in self.entries:
+            if kind == MATERIAL and len(payload) > _MATERIAL.size:
+                (length,) = struct.unpack_from("<H", payload, _MATERIAL.size)
+                texture = payload[_MATERIAL.size + 2:_MATERIAL.size + 2 + length].decode()
+                if texture and texture not in textures:
+                    raise PackError(f"{name}: no texture {texture!r} in the pack")
         for kind, name, payload in self.entries:
             if kind != MESH or not payload[9] & 2:
                 continue

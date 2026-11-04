@@ -2,7 +2,7 @@
 
 Alia Pad 掌机的游戏引擎：一个轻量的 C++ 运行时，针对 UNO Q 的 Adreno 702（GLES 3.1、内存带宽约 2 GB/s）设计，同一份代码也在 PC 上运行（当作模拟器的渲染端）。
 
-**现状：v0.3.2（2026-10-31），E0–E2、E3a、E4 完成**：Python 写 3D 掌机游戏的整套接口（[`docs/api.md`](docs/api.md)，从 §0 快速开始读起）、`alia_kit` 小件、插件（[`docs/plugins.md`](docs/plugins.md)，第一个是补间）、示例游戏 Wisp Keeper（`apps/sample/`）；游戏项目的布局和 `alia` 工具（运行、测试、打卡带）见 [`docs/project.md`](docs/project.md)；Megalith 是独立的游戏仓库 `NU-Hachimi/megalith`。main 上新加了掌机的相机（相机画面当背景、HUD 取景框、拍照，[`docs/camera.md`](docs/camera.md)）和纹理（PNG / JPEG、HUD 里的图片、带纹理的材质，[`docs/textures.md`](docs/textures.md)；资源包里的纹理是下一步），还没发布。下一步 E5 / E6；E3b 等屏幕和 IMU 硬件。 架构见 [`docs/architecture.md`](docs/architecture.md)。构建用 CMake，板上版本在 PC 上交叉编译（clang + 板子的 sysroot，§5.1）。
+**现状：v0.3.2（2026-10-31），E0–E2、E3a、E4 完成**：Python 写 3D 掌机游戏的整套接口（[`docs/api.md`](docs/api.md)，从 §0 快速开始读起）、`alia_kit` 小件、插件（[`docs/plugins.md`](docs/plugins.md)，第一个是补间）、示例游戏 Wisp Keeper（`apps/sample/`）；游戏项目的布局和 `alia` 工具（运行、测试、打卡带）见 [`docs/project.md`](docs/project.md)；Megalith 是独立的游戏仓库 `NU-Hachimi/megalith`。main 上新加了掌机的相机（相机画面当背景、HUD 取景框、拍照，[`docs/camera.md`](docs/camera.md)）和纹理（PNG / JPEG、HUD 里的图片、带纹理的材质、资源包里的纹理，[`docs/textures.md`](docs/textures.md)；图集、ETC2 是下一步），还没发布。下一步 E5 / E6；E3b 等屏幕和 IMU 硬件。 架构见 [`docs/architecture.md`](docs/architecture.md)。构建用 CMake，板上版本在 PC 上交叉编译（clang + 板子的 sysroot，§5.1）。
 
 **做游戏从这里开始**：[Wiki](https://github.com/NU-Hachimi/alia-engine/wiki)（中文 / English，每个发布版本一套，和你装的版本对得上）；仓库里的 [`docs/getting-started.md`](docs/getting-started.md) 是 `main` 上最新的、还没发布的样子。下面是改引擎本身的说明。
 

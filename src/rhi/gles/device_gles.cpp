@@ -25,7 +25,15 @@ struct GlTexture {
     Format format;
     EGLImageKHR image = EGL_NO_IMAGE_KHR;  // an imported dmabuf
     Wrap wrap = Wrap::Clamp;
+    bool mipmaps = false;
 };
+
+// The number of mip levels down to 1x1.
+int mip_levels(int w, int h) {
+    int n = 1;
+    for (int s = std::max(w, h); s > 1; s >>= 1) n++;
+    return n;
+}
 
 // Data textures (rhi.hpp): internal format, format, type.
 struct DataFormat {
@@ -74,10 +82,13 @@ public:
         glBufferData(GL_UNIFORM_BUFFER, kUboSize, nullptr, GL_DYNAMIC_DRAW);
         glGenVertexArrays(1, &vao_);
         glBindVertexArray(vao_);
-        glGenSamplers(4, samplers_);
-        for (int i = 0; i < 4; i++) {  // [filter + 2 * wrap]
-            GLint f = i % 2 == 0 ? GL_NEAREST : GL_LINEAR, w = i < 2 ? GL_CLAMP_TO_EDGE : GL_REPEAT;
-            glSamplerParameteri(samplers_[i], GL_TEXTURE_MIN_FILTER, f);
+        glGenSamplers(kSamplers, samplers_);
+        for (int i = 0; i < kSamplers; i++) {  // [filter + 2 * wrap + 4 * mipmaps]
+            const bool linear = i & 1, mips = i & 4;
+            GLint f = linear ? GL_LINEAR : GL_NEAREST, w = i & 2 ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+            // with mipmaps: nearest texels (or linear), blended between the two nearest levels
+            GLint min = mips ? (linear ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_LINEAR) : f;
+            glSamplerParameteri(samplers_[i], GL_TEXTURE_MIN_FILTER, min);
             glSamplerParameteri(samplers_[i], GL_TEXTURE_MAG_FILTER, f);
             glSamplerParameteri(samplers_[i], GL_TEXTURE_WRAP_S, w);
             glSamplerParameteri(samplers_[i], GL_TEXTURE_WRAP_T, w);
@@ -95,7 +106,7 @@ public:
         for (auto& [k, p] : pipelines_) glDeleteProgram(p.program);
         glDeleteBuffers(1, &ubo_);
         glDeleteVertexArrays(1, &vao_);
-        glDeleteSamplers(4, samplers_);
+        glDeleteSamplers(kSamplers, samplers_);
     }
 
     BufferH create_buffer(const BufferDesc& d) override {
@@ -117,11 +128,14 @@ public:
     TextureH create_texture(const TextureDesc& d) override {
         GlTexture t{0, d.width, d.height, d.format};
         t.wrap = d.wrap;
+        t.mipmaps = d.mipmaps && d.format == Format::RGBA8;
+        const int levels = t.mipmaps ? mip_levels(d.width, d.height) : 1;
         glGenTextures(1, &t.id);
         glBindTexture(GL_TEXTURE_2D, t.id);
         GLint filter = d.filter == Filter::Linear ? GL_LINEAR : GL_NEAREST;
+        GLint min_filter = !t.mipmaps ? filter : d.filter == Filter::Linear ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_LINEAR;
         GLint wrap = d.wrap == Wrap::Repeat ? GL_REPEAT : GL_CLAMP_TO_EDGE;
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min_filter);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
@@ -134,10 +148,12 @@ public:
                 size_t row = size_t(d.width) * 4;
                 for (int y = 0; y < d.height; y++)
                     std::memcpy(&flipped[(d.height - 1 - y) * row], src + y * row, row);
-                glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, d.width, d.height);
+                glTexStorage2D(GL_TEXTURE_2D, levels, GL_RGBA8, d.width, d.height);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, d.width, d.height, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data());
+                if (t.mipmaps) glGenerateMipmap(GL_TEXTURE_2D);
             } else {
-                glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, d.width, d.height);
+                glTexStorage2D(GL_TEXTURE_2D, levels, GL_RGBA8, d.width, d.height);
             }
             break;
         case Format::Depth24:
@@ -171,7 +187,9 @@ public:
         size_t row = size_t(t.width) * 4;
         for (int y = 0; y < t.height; y++) std::memcpy(&flipped[(t.height - 1 - y) * row], src + y * row, row);
         glBindTexture(GL_TEXTURE_2D, t.id);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, t.width, t.height, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data());
+        if (t.mipmaps) glGenerateMipmap(GL_TEXTURE_2D);
     }
 
     void update_texture_rect(TextureH h, int x, int y, int w, int hgt, const void* pixels) override {
@@ -185,6 +203,7 @@ public:
         glBindTexture(GL_TEXTURE_2D, t.id);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glTexSubImage2D(GL_TEXTURE_2D, 0, x, t.height - y - hgt, w, hgt, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data());
+        if (t.mipmaps) glGenerateMipmap(GL_TEXTURE_2D);
     }
 
     void update_data_texture(TextureH h, const void* data, size_t row_bytes) override {
@@ -409,7 +428,8 @@ public:
         const GlTexture& t = textures_.at(h.id);
         glActiveTexture(GLenum(GL_TEXTURE0 + slot));
         glBindTexture(GL_TEXTURE_2D, t.id);
-        glBindSampler(GLuint(slot), samplers_[(filter == Filter::Linear ? 1 : 0) + (t.wrap == Wrap::Repeat ? 2 : 0)]);
+        glBindSampler(GLuint(slot), samplers_[(filter == Filter::Linear ? 1 : 0) + (t.wrap == Wrap::Repeat ? 2 : 0) +
+                                              (t.mipmaps ? 4 : 0)]);
     }
 
     void set_uniforms(const void* data, size_t size) override {
@@ -507,7 +527,8 @@ private:
     std::unordered_map<uint32_t, GlTarget> targets_;
     std::unordered_map<uint32_t, GlPipeline> pipelines_;
     GLuint ubo_ = 0, vao_ = 0;
-    GLuint samplers_[4] = {};  // nearest, linear
+    static constexpr int kSamplers = 8;
+    GLuint samplers_[kSamplers] = {};  // [filter + 2 * wrap + 4 * mipmaps]
     PassDesc pass_;
     int pass_w_ = 0, pass_h_ = 0;
     bool pass_depth_ = false;
