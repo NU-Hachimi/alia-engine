@@ -38,6 +38,7 @@ layout(std140) uniform Params {
     vec4 u_fog;        // x: near; y: full; z: steps (0: off)
     vec4 u_fog_color;
     vec4 u_ground;     // x: amount; y: top; z: ramp; w: opacity
+    vec4 u_uv;         // textured: xy + uv * zw (the material's uv_rect)
 };
 )"
 
@@ -103,7 +104,7 @@ void main() {
     float shade = ambient + diffuse * max(0.0, -dot(n, u_light.xyz));
 #ifdef TEXTURED
     v_color = c;
-    v_uv = a_uv;
+    v_uv = u_uv.xy + a_uv * u_uv.zw;
     v_shade = shade;
     v_k = k;
 #else
@@ -686,7 +687,7 @@ void HandheldPipeline::render_into(rhi::Device& dev, rhi::TargetH target, int W,
     struct MeshParams {
         float view_proj[16];
         float model[12];
-        float eye[4], forward[4], light[4], material[4], fog[4], fog_color[4], ground[4];
+        float eye[4], forward[4], light[4], material[4], fog[4], fog_color[4], ground[4], uv[4];
     } p{};
     std::memcpy(p.view_proj, glm::value_ptr(view_proj), sizeof p.view_proj);
     std::memcpy(p.eye, f.eye.data(), 3 * sizeof(float));
@@ -704,6 +705,8 @@ void HandheldPipeline::render_into(rhi::Device& dev, rhi::TargetH target, int W,
     // A textured part's texture on slot 1 (magenta while it isn't there, black while bound to nothing); u_fog.w: cutout.
     auto bind_material_texture = [&](const Material& mat) {
         p.fog[3] = mat.alpha_mode == AlphaMode::Cutout ? 1.0f : 0.0f;
+        const auto& r = mat.uv_rect;
+        p.uv[0] = r[0], p.uv[1] = r[1], p.uv[2] = r[2] - r[0], p.uv[3] = r[3] - r[1];
         if (mat.color != ColorSource::Texture) return;
         for (const BoundTexture& b : bound_textures_)
             if (b.id == mat.texture) {

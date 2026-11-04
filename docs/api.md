@@ -153,6 +153,7 @@ box = e.create_mesh(kit.textured_box(1, 1, 1, crate))                 # 网格�
 |---|---|---|
 | `shading` | `FLAT`（默认）/ `SMOOTH` / `UNLIT` | 面法线 / 顶点法线 / 不打光 |
 | `color` | `PALETTE`（默认）/ `VERTEX` / `TEXTURE` | 网格的每三角形调色板索引 / 每顶点 RGB / `texture`（网格要有 `uv`；实例的 `tint` 乘在纹理上；main 上新加的，`docs/textures.md`） |
+| `uv_rect` | `(u0, v0, u1, v1)`，默认 `(0, 0, 1, 1)` | 网格的 uv 落在纹理的哪一块（精灵表的一帧）；`update_material` 换帧（main 上新加的） |
 | `texture` | `Texture` 或 None | `TEXTURE` 用的纹理（`e.load_texture`、`e.create_texture`、`e.lens.texture`）；None、还没加载好或已经 destroy：品红色（"缺纹理"的颜色，一眼看得出）；相机画面还没有时：黑色 |
 | `palette_index` | 0–31 | 非 0：整段都用这个颜色（不需要网格的 `tri_palette`） |
 | `light` | `SUN`（默认）/ `CHARACTER` | 用哪盏灯 |

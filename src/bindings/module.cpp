@@ -464,15 +464,17 @@ NB_MODULE(alia_engine, m) {
             "__init__",
             [](render::Material* self, render::Shading shading, render::ColorSource color, uint8_t palette_index,
                render::Light light, float ambient, float diffuse, float emissive, render::AlphaMode alpha_mode,
-               float opacity, bool double_sided, bool fog, bool ground_fog, nb::handle texture) {
+               float opacity, bool double_sided, bool fog, bool ground_fog, nb::handle texture,
+               std::array<float, 4> uv_rect) {
                 new (self) render::Material{shading, color,      palette_index, light,        ambient, diffuse,
                                             emissive, alpha_mode, opacity,      double_sided, fog,     ground_fog,
-                                            texture_id(texture)};
+                                            texture_id(texture), uv_rect};
             },
             "shading"_a = render::Shading::Flat, "color"_a = render::ColorSource::Palette, "palette_index"_a = 0,
             "light"_a = render::Light::Sun, "ambient"_a = -1.0f, "diffuse"_a = -1.0f, "emissive"_a = 0.0f,
             "alpha_mode"_a = render::AlphaMode::Opaque, "opacity"_a = 1.0f, "double_sided"_a = false, "fog"_a = true,
-            "ground_fog"_a = true, "texture"_a = nb::none())
+            "ground_fog"_a = true, "texture"_a = nb::none(),
+            "uv_rect"_a = std::array<float, 4>{0, 0, 1, 1})
         .def_rw("shading", &render::Material::shading)
         .def_rw("color", &render::Material::color)
         .def_rw("palette_index", &render::Material::palette_index)
@@ -490,7 +492,10 @@ NB_MODULE(alia_engine, m) {
             [](render::Material& mat, nb::handle t) { mat.texture = texture_id(t); },
             "color=TEXTURE: a Texture (e.load_texture, e.lens.texture; docs/textures.md). None, still loading or "
             "destroyed: magenta (the 'missing texture' colour); the lens's before its first frame: black. "
-            "update_material() changes it for meshes already built.");
+            "update_material() changes it for meshes already built.")
+        .def_rw("uv_rect", &render::Material::uv_rect,
+                "(u0, v0, u1, v1): the part of the texture the mesh's uv 0..1 covers (top-left origin), e.g. one frame "
+                "of a sprite sheet; update_material switches it, nothing is uploaded.");
 
     nb::class_<platform::InputState>(m, "Input")
         .def_ro("gamepad", &platform::InputState::gamepad)
@@ -1030,13 +1035,17 @@ NB_MODULE(alia_engine, m) {
             return nb::str(i ? i->error.c_str() : "destroyed");
         })
         .def("update",
-             [](PyTexture& t, const nb::bytes& rgba) {
+             [](PyTexture& t, const nb::bytes& rgba, std::optional<std::array<int, 4>> rect) {
                  std::string err;
                  if (t.id == runtime::Engine::kLensTexture) throw nb::value_error("the camera's texture is the camera's");
-                 if (!t.e().update_texture(t.id, reinterpret_cast<const uint8_t*>(rgba.data()), rgba.size(), &err))
-                     throw nb::value_error(err.c_str());
+                 const auto* px = reinterpret_cast<const uint8_t*>(rgba.data());
+                 bool ok = rect ? t.e().update_texture_rect(t.id, (*rect)[0], (*rect)[1], (*rect)[2], (*rect)[3], px, rgba.size(), &err)
+                                : t.e().update_texture(t.id, px, rgba.size(), &err);
+                 if (!ok) throw nb::value_error(err.c_str());
              },
-             "rgba"_a, "New pixels: width * height * 4 bytes, top row first.")
+             "rgba"_a, "rect"_a = nb::none(),
+             "New pixels, top row first: the whole texture (width * height * 4 bytes), or only rect=(x, y, w, h) "
+             "(from the top-left; w * h * 4 bytes): painting tools, part edits.")
         .def("destroy", [](PyTexture& t) { if (t.id != runtime::Engine::kLensTexture) t.e().destroy_texture(t.id); },
              "Free it (GPU memory); drawing it afterwards draws nothing.");
 

@@ -124,6 +124,8 @@ public:
     virtual TextureH create_texture(const TextureDesc& desc) = 0;
     // Replaces all pixels of an RGBA8 texture (top row first).
     virtual void update_texture(TextureH tex, const void* pixels) = 0;
+    // Replaces a rectangle of an RGBA8 texture (x, y from the top-left; w * h pixels, top row first).
+    virtual void update_texture_rect(TextureH tex, int x, int y, int w, int h, const void* pixels) = 0;
     // Replaces all of a data texture (R8: row_bytes apart, 0 = tight; 16F: tightly packed floats).
     virtual void update_data_texture(TextureH tex, const void* data, size_t row_bytes = 0) = 0;
     // An R8 texture reading the dmabuf in place, NEAREST; {} when this GPU or display can't import it

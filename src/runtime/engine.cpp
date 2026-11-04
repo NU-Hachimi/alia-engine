@@ -447,6 +447,26 @@ bool Engine::update_texture(uint32_t id, const uint8_t* rgba, size_t size, std::
     return true;
 }
 
+bool Engine::update_texture_rect(uint32_t id, int x, int y, int w, int h, const uint8_t* rgba, size_t size,
+                                 std::string* error) {
+    auto it = textures_.find(id);
+    if (it == textures_.end() || !it->second.handle) {
+        *error = "no such texture (or not loaded yet)";
+        return false;
+    }
+    const TextureInfo& i = it->second.info;
+    if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > i.width || y + h > i.height) {
+        *error = "update: the rect must lie inside the texture";
+        return false;
+    }
+    if (size != size_t(w) * h * 4) {
+        *error = "update: w * h * 4 bytes of RGBA for the rect";
+        return false;
+    }
+    dev_->update_texture_rect(it->second.handle, x, y, w, h, rgba);
+    return true;
+}
+
 void Engine::destroy_texture(uint32_t id) {
     auto it = textures_.find(id);
     if (it == textures_.end()) return;

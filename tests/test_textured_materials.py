@@ -115,6 +115,31 @@ with tempfile.TemporaryDirectory() as tmp:
     except (ValueError, RuntimeError):
         check(True, "a textured material without uv: an error")
 
+    # uv_rect: one frame of a sprite sheet; update_material switches frames (nothing uploaded)
+    sheet_mat = ae.Material(shading=ae.Shading.UNLIT, color=ae.ColorSource.TEXTURE, texture=tex, uv_rect=(0.5, 0, 1, 0.5))
+    sheet = e.create_material(sheet_mat)
+    frame = e.create_mesh(kit.quad(2, 2, sheet))
+    p = shot((frame, at(0, 0, 2)))
+    check(near(pixel(p, 260, 120), GREEN[:3]) and near(pixel(p, 380, 240), GREEN[:3]), "uv_rect: the top-right quarter (green) fills the quad")
+    sheet_mat.uv_rect = (0, 0.5, 0.5, 1)
+    e.update_material(sheet, sheet_mat)
+    p = shot((frame, at(0, 0, 2)))
+    check(near(pixel(p, 320, 180), BLUE[:3]), "update_material: the next frame (bottom-left, blue)")
+
+    # tex.update(rect=): a part of the texture, from the top-left
+    canvas = e.create_texture(4, 4, bytes(WHITE) * 16)
+    paint = e.create_mesh(kit.quad(2, 2, e.create_material(ae.Material(shading=ae.Shading.UNLIT, color=ae.ColorSource.TEXTURE,
+                                                                       texture=canvas))))
+    canvas.update(bytes(RED) * 4, rect=(2, 0, 2, 2))  # the top-right 2x2
+    p = shot((paint, at(0, 0, 2)))
+    check(near(pixel(p, 380, 120), RED[:3]) and near(pixel(p, 260, 120), WHITE[:3]) and near(pixel(p, 380, 240), WHITE[:3]),
+          "update(rect=): only that rect, top-right")
+    try:
+        canvas.update(bytes(RED) * 4, rect=(3, 3, 2, 2))
+        check(False, "update(rect=) outside the texture: an error")
+    except ValueError:
+        check(True, "update(rect=) outside the texture: an error")
+
     # destroy_material: refused while a mesh uses it; freed after; the id can come back for a new material
     face = e.create_material(ae.Material(shading=ae.Shading.UNLIT, color=ae.ColorSource.TEXTURE))
     face_mesh = e.create_mesh(kit.quad(1, 1, face))

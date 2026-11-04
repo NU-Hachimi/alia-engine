@@ -141,6 +141,8 @@ public:
     uint32_t load_texture_async(std::vector<uint8_t> png_or_jpeg, int max_side, bool linear, bool repeat = false);
     uint32_t create_texture(int width, int height, const uint8_t* rgba, bool linear, std::string* error, bool repeat = false);
     bool update_texture(uint32_t id, const uint8_t* rgba, size_t size, std::string* error);
+    // Only a rectangle (x, y from the top-left): w * h * 4 bytes.
+    bool update_texture_rect(uint32_t id, int x, int y, int w, int h, const uint8_t* rgba, size_t size, std::string* error);
     void destroy_texture(uint32_t id);
     const TextureInfo* texture_info(uint32_t id) const;
     size_t texture_bytes() const { return texture_bytes_; }  // RGBA8 on the GPU, all textures

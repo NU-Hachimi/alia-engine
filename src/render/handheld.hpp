@@ -52,6 +52,9 @@ struct Material {
     // colour; bound to nothing yet, like the camera before its first frame: black). The colour is the
     // texture, times the instance's tint (a palette colour) when it has one, then lit like any other.
     uint32_t texture = 0;
+    // The part of the texture the mesh's uv 0..1 covers (u0, v0, u1, v1; top-left origin): a frame of a sprite
+    // sheet. Read at every draw, so update_material switches frames without uploading anything.
+    std::array<float, 4> uv_rect{0, 0, 1, 1};
 };
 
 // A run of triangles drawn with one material.

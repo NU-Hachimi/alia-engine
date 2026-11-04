@@ -174,6 +174,19 @@ public:
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, t.width, t.height, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data());
     }
 
+    void update_texture_rect(TextureH h, int x, int y, int w, int hgt, const void* pixels) override {
+        const auto& t = textures_.at(h.id);
+        if (t.format != Format::RGBA8 || x < 0 || y < 0 || w <= 0 || hgt <= 0 || x + w > t.width || y + hgt > t.height) return;
+        // GL's first row is the bottom one: the rect's rows reversed, placed from the bottom.
+        std::vector<uint8_t> flipped(size_t(w) * hgt * 4);
+        const auto* src = static_cast<const uint8_t*>(pixels);
+        const size_t row = size_t(w) * 4;
+        for (int r = 0; r < hgt; r++) std::memcpy(&flipped[(hgt - 1 - r) * row], src + r * row, row);
+        glBindTexture(GL_TEXTURE_2D, t.id);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, x, t.height - y - hgt, w, hgt, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data());
+    }
+
     void update_data_texture(TextureH h, const void* data, size_t row_bytes) override {
         const auto& t = textures_.at(h.id);
         const DataFormat f = data_format(t.format);
