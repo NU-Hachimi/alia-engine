@@ -3,7 +3,9 @@
 
     alia new DIR                 a new project in the recommended layout (a small game that runs)
     alia run [ARGS...]           play it in the Alia Pad simulator (the devkit's acart run: the handheld's system, in
-                                 Docker; any OS). ARGS go to the game: --demo, --frames N, ...
+                                 Docker; any OS). ARGS go to the game: --demo, --frames N, ...; the simulator's own
+                                 (--camera clip|scene|webcam|none, --camera-permission allow|ask|deny, --browser,
+                                 --lang, --fresh ...) to it
     alia test [PYTEST ARGS...]   its tests, against a headless engine, in the simulator's image (acart exec)
     alia exec SCRIPT [ARGS...]   one of its tools (tools/...) there too, with the game and the engine importable
     alia cart [--pc]             the cart: build/cart/ (board) or build/cart-pc/, checked; the board's packed too
@@ -274,11 +276,42 @@ def need_acart(command):
         raise Fail(f"this needs the Alia Pad devkit's acart {command} (a newer alia-sdk): alia setup")
 
 
+# acart run's own options (the simulator: camera, language, browser ...), which alia run hands to acart rather than to
+# the game; --size isn't among them: it is the engine's (the window). After `--` everything is the game's.
+SIM_VALUE_OPTIONS = ("--camera", "--camera-permission", "--camera-device", "--lang", "--port", "--image")
+SIM_FLAGS = ("--fresh", "--software", "--no-audio", "--debug", "--browser", "--no-open")
+
+
+def split_sim_args(args):
+    """(acart run's options, the game's arguments)."""
+    sim, game, k = [], [], 0
+    while k < len(args):
+        a = args[k]
+        if a == "--":
+            game += args[k + 1:]
+            break
+        name = a.split("=", 1)[0]
+        if name in SIM_FLAGS:
+            sim.append(a)
+        elif name in SIM_VALUE_OPTIONS:
+            sim.append(a)
+            if "=" not in a and k + 1 < len(args):
+                sim.append(args[k + 1])
+                k += 1
+        else:
+            game.append(a)
+        k += 1
+    return sim, game
+
+
 def cmd_run(project, args):
-    """The game in the devkit's simulator (acart run): the PC cart, copied fresh, in the alia-runtime image."""
+    """The game in the devkit's simulator (acart run): the PC cart, copied fresh, in the alia-runtime image. The
+    simulator's options (SIM_VALUE_OPTIONS, SIM_FLAGS: --camera scene, --camera-permission ask, --browser ...) go to
+    acart, the rest to the game."""
     need_acart("run")
     out = cmd_cart(project, pc=True, art=False)
-    run([ACART, "run", out, *args])
+    sim, game = split_sim_args(args)
+    run([ACART, "run", *sim, out, *game])
 
 
 def in_image(project, cmd):

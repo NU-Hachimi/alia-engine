@@ -87,6 +87,11 @@ calls_text = [m.group(0) for f in ("alia.py", "alia_plugin.py")
               for m in re.finditer(r"\.(write_text|read_text)\((?:[^()]|\([^()]*\))*\)", (REPO / "tools" / f).read_text())]
 check(calls_text and all("encoding=" in c for c in calls_text),
       "the tool reads and writes text as UTF-8, never the system's encoding (cp1252, GBK on Windows)")
+sim, game = alia.split_sim_args(["--camera", "scene", "--frames", "5", "--camera-permission=ask", "--browser", "--size",
+                                  "640x360", "--", "--lang", "x"])
+check(sim == ["--camera", "scene", "--camera-permission=ask", "--browser"]
+      and game == ["--frames", "5", "--size", "640x360", "--lang", "x"],
+      "alia run: the simulator's options to acart (before the cart), the rest and everything after -- to the game")
 import contextlib  # noqa: E402
 import io  # noqa: E402
 out = io.StringIO()
