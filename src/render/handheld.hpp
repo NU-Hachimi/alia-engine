@@ -2,7 +2,7 @@
 // low-resolution scene target, then the final pass puts it on the output.
 //
 // Scene pass, in order:
-//   1. sky: a vertical gradient by elevation (no geometry, no depth)
+//   1. sky: a vertical gradient by elevation (no geometry, no depth), or the camera's image
 //   2. meshes: forward, per-vertex lighting from one of two directional lights, colours from
 //      a 32-entry palette (so a new Look is one palette upload) or baked per-vertex RGB;
 //      distance fog in quantized steps (the N64 / PS1 banding) and a height ("ground") fog
@@ -84,12 +84,15 @@ struct DirLight {
 };
 
 struct HudCmd {
-    enum Kind : uint8_t { Rect, Text } kind = Rect;
+    enum Kind : uint8_t { Rect, Text, Camera } kind = Rect;
     float x = 0, y = 0, w = 0, h = 0;  // scene pixels, top-left origin; text: w = scale
-    uint32_t color = 0xFFFFFFFF;       // 0xRRGGBBAA
+    uint32_t color = 0xFFFFFFFF;       // 0xRRGGBBAA (Camera: multiplies the image)
     uint32_t shadow = 0;               // text: drop shadow 1 scaled pixel down-right (alpha 0 = none)
     std::string text;
+    float u0 = 0, v0 = 0, u1 = 1, v1 = 1;  // Camera: the part of the image, 0..1, top-left origin
 };
+
+enum class CameraBackground : uint8_t { Off, Cover, Fit };
 
 struct FrameDesc {
     // Camera: yaw 0 faces +Z, positive pitch looks up; fov is horizontal.
@@ -106,6 +109,9 @@ struct FrameDesc {
     float ground_fog = 0, ground_top = 9, ground_ramp = 30;
     DirLight sun, character;
     uint32_t overlay = 0;  // 0xRRGGBBAA full-screen tint after the meshes, under the HUD
+    // The camera's image instead of the sky (set_camera_image): Cover fills the scene and crops, Fit shows
+    // all of it with black bars; black while there is no image.
+    CameraBackground camera_background = CameraBackground::Off;
 };
 
 struct PipelineStats {
@@ -142,6 +148,8 @@ public:
     bool has_mesh(uint32_t id) const;
 
     void set_palette(rhi::Device& dev, std::span<const uint8_t> rgb);  // up to 32 RGB triples
+    // The camera's image for camera_background and HudCmd::Camera ({}: none, drawn black).
+    void set_camera_image(rhi::TextureH image, int width, int height) { camera_ = image, camera_w_ = width, camera_h_ = height; }
 
     // Renders the scene target. Instances are frustum-culled by their bounding spheres. Opaque
     // instances of the same mesh with the same light and ground fog are drawn together, one
@@ -175,7 +183,9 @@ private:
     int w_ = 0, h_ = 0;
     rhi::TextureH color_, depth_, palette_, font_;
     rhi::TargetH target_;
-    rhi::PipelineH sky_, mesh_, mesh_two_sided_, blend_, blend_two_sided_, overlay_, hud_;
+    rhi::PipelineH sky_, mesh_, mesh_two_sided_, blend_, blend_two_sided_, overlay_, hud_, camera_bg_, hud_camera_;
+    rhi::TextureH camera_;
+    int camera_w_ = 0, camera_h_ = 0;
     rhi::PipelineH instanced_, instanced_two_sided_;
     rhi::BufferH hud_vb_, instance_vb_;
     size_t instance_capacity_ = 0;

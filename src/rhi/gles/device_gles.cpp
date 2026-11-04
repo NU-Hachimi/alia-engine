@@ -1,6 +1,10 @@
 // GLES 3.0 backend of the RHI.
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <GLES3/gl3.h>
+#include <GLES2/gl2ext.h>
 
+#include <cstdio>
 #include <cstring>
 #include <unordered_map>
 #include <vector>
@@ -19,7 +23,22 @@ struct GlTexture {
     GLuint id;
     int width, height;
     Format format;
+    EGLImageKHR image = EGL_NO_IMAGE_KHR;  // an imported dmabuf
 };
+
+// Data textures (rhi.hpp): internal format, format, type.
+struct DataFormat {
+    GLenum internal, format, type;
+    size_t texel;
+};
+DataFormat data_format(Format f) {
+    switch (f) {
+    case Format::R8: return {GL_R8, GL_RED, GL_UNSIGNED_BYTE, 1};
+    case Format::R16F: return {GL_R16F, GL_RED, GL_FLOAT, 4};
+    case Format::RGBA16F: return {GL_RGBA16F, GL_RGBA, GL_FLOAT, 16};
+    default: return {0, 0, 0, 0};
+    }
+}
 struct GlTarget {
     GLuint fbo;
     int width, height;
@@ -66,7 +85,11 @@ public:
 
     ~GlesDevice() override {
         for (auto& [k, b] : buffers_) glDeleteBuffers(1, &b.id);
-        for (auto& [k, t] : textures_) glDeleteTextures(1, &t.id);
+        for (auto& [k, t] : textures_) {
+            glDeleteTextures(1, &t.id);
+            destroy_image(t.image);
+        }
+        for (auto& [k, f] : fences_) glDeleteSync(f);
         for (auto& [k, t] : targets_) glDeleteFramebuffers(1, &t.fbo);
         for (auto& [k, p] : pipelines_) glDeleteProgram(p.program);
         glDeleteBuffers(1, &ubo_);
@@ -120,6 +143,17 @@ public:
         case Format::Depth32F:
             glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH_COMPONENT32F, d.width, d.height);
             break;
+        case Format::R8:
+        case Format::R16F:
+        case Format::RGBA16F: {
+            const DataFormat f = data_format(d.format);
+            glTexStorage2D(GL_TEXTURE_2D, 1, f.internal, d.width, d.height);
+            if (d.pixels) {
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, d.width, d.height, f.format, f.type, d.pixels);
+            }
+            break;
+        }
         }
         TextureH h{next_++};
         textures_[h.id] = t;
@@ -135,6 +169,83 @@ public:
         for (int y = 0; y < t.height; y++) std::memcpy(&flipped[(t.height - 1 - y) * row], src + y * row, row);
         glBindTexture(GL_TEXTURE_2D, t.id);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, t.width, t.height, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data());
+    }
+
+    void update_data_texture(TextureH h, const void* data, size_t row_bytes) override {
+        const auto& t = textures_.at(h.id);
+        const DataFormat f = data_format(t.format);
+        if (!f.internal || t.image != EGL_NO_IMAGE_KHR) return;
+        glBindTexture(GL_TEXTURE_2D, t.id);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, row_bytes ? GLint(row_bytes / f.texel) : 0);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, t.width, t.height, f.format, f.type, data);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    }
+
+    TextureH import_dmabuf(const DmabufDesc& d, std::string* error) override {
+        EGLDisplay dpy = eglGetCurrentDisplay();
+        auto create = reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(eglGetProcAddress("eglCreateImageKHR"));
+        auto target = reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(eglGetProcAddress("glEGLImageTargetTexture2DOES"));
+        const char* ext = dpy != EGL_NO_DISPLAY ? eglQueryString(dpy, EGL_EXTENSIONS) : nullptr;
+        if (!create || !target || !ext || !std::strstr(ext, "EGL_EXT_image_dma_buf_import")) {
+            *error = "no EGL_EXT_image_dma_buf_import";
+            return {};
+        }
+        const bool modifiers = std::strstr(ext, "EGL_EXT_image_dma_buf_import_modifiers") != nullptr;
+        constexpr EGLint kR8 = 0x20203852;  // DRM_FORMAT_R8: fourcc 'R', '8', ' ', ' '
+        EGLint attrs[] = {EGL_WIDTH, d.width, EGL_HEIGHT, d.height, EGL_LINUX_DRM_FOURCC_EXT, kR8,
+                          EGL_DMA_BUF_PLANE0_FD_EXT, d.fd, EGL_DMA_BUF_PLANE0_OFFSET_EXT, EGLint(d.offset),
+                          EGL_DMA_BUF_PLANE0_PITCH_EXT, EGLint(d.stride),
+                          EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, EGLint(uint32_t(d.modifier)),
+                          EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, EGLint(uint32_t(d.modifier >> 32)), EGL_NONE};
+        if (!modifiers) attrs[14] = EGL_NONE;  // linear only: leave the modifier out
+        EGLImageKHR image = create(dpy, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, nullptr, attrs);
+        if (image == EGL_NO_IMAGE_KHR) {
+            char buf[64];
+            std::snprintf(buf, sizeof buf, "eglCreateImageKHR: 0x%x", eglGetError());
+            *error = buf;
+            return {};
+        }
+        GlTexture t{0, d.width, d.height, Format::R8, image};
+        glGenTextures(1, &t.id);
+        glBindTexture(GL_TEXTURE_2D, t.id);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        while (glGetError() != GL_NO_ERROR) {}
+        target(GL_TEXTURE_2D, image);
+        if (GLenum e = glGetError(); e != GL_NO_ERROR) {
+            glDeleteTextures(1, &t.id);
+            destroy_image(image);
+            char buf[64];
+            std::snprintf(buf, sizeof buf, "glEGLImageTargetTexture2DOES: 0x%x", e);
+            *error = buf;
+            return {};
+        }
+        TextureH h{next_++};
+        textures_[h.id] = t;
+        return h;
+    }
+
+    FenceH fence() override {
+        FenceH h{next_++};
+        fences_[h.id] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        glFlush();  // so the fence reaches the GPU without waiting for the next swap
+        return h;
+    }
+    bool signaled(FenceH h) override {
+        auto it = fences_.find(h.id);
+        if (it == fences_.end()) return true;
+        GLint status = GL_UNSIGNALED;
+        glGetSynciv(it->second, GL_SYNC_STATUS, 1, nullptr, &status);
+        return status == GL_SIGNALED;
+    }
+    void destroy(FenceH h) override {
+        if (auto it = fences_.find(h.id); it != fences_.end()) {
+            glDeleteSync(it->second);
+            fences_.erase(it);
+        }
     }
 
     TargetH create_target(const TargetDesc& d) override {
@@ -196,7 +307,13 @@ public:
     }
 
     void destroy(BufferH h) override { if (auto it = buffers_.find(h.id); it != buffers_.end()) { glDeleteBuffers(1, &it->second.id); buffers_.erase(it); } }
-    void destroy(TextureH h) override { if (auto it = textures_.find(h.id); it != textures_.end()) { glDeleteTextures(1, &it->second.id); textures_.erase(it); } }
+    void destroy(TextureH h) override {
+        if (auto it = textures_.find(h.id); it != textures_.end()) {
+            glDeleteTextures(1, &it->second.id);
+            destroy_image(it->second.image);
+            textures_.erase(it);
+        }
+    }
     void destroy(TargetH h) override { if (auto it = targets_.find(h.id); it != targets_.end()) { glDeleteFramebuffers(1, &it->second.fbo); targets_.erase(it); } }
     void destroy(PipelineH h) override { if (auto it = pipelines_.find(h.id); it != pipelines_.end()) { glDeleteProgram(it->second.program); pipelines_.erase(it); } }
 
@@ -338,6 +455,12 @@ public:
     }
 
 private:
+    static void destroy_image(EGLImageKHR image) {
+        if (image == EGL_NO_IMAGE_KHR) return;
+        auto destroy = reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
+        if (destroy) destroy(eglGetCurrentDisplay(), image);
+    }
+
     void apply_attribs() {
         if (!attribs_dirty_ || !current_) return;
         const auto& d = current_->desc;
@@ -363,6 +486,7 @@ private:
     uint32_t next_ = 1;
     std::unordered_map<uint32_t, GlBuffer> buffers_;
     std::unordered_map<uint32_t, GlTexture> textures_;
+    std::unordered_map<uint32_t, GLsync> fences_;
     std::unordered_map<uint32_t, GlTarget> targets_;
     std::unordered_map<uint32_t, GlPipeline> pipelines_;
     GLuint ubo_ = 0, vao_ = 0;

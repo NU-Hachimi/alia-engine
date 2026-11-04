@@ -118,6 +118,7 @@ ae.run(Game(), argv=sys.argv[1:], title="Game", fixed_hz=60, app_id="com.example
 | `e.frame` | 天空、雾、灯、叠色，帧与帧之间保留（下表）；相机字段跟着 `w.camera`（§3），用世界的相机就不用管 |
 | `e.draw(mesh, model, tint=0, light=ae.Light.MATERIAL, fade=0, ground_fog=True)` | 本帧画一个实例；`model`：行主序 3×4（12 个数）；其余参数是实例覆盖（§2） |
 | `e.hud_rect(x, y, w, h, color)`、`e.hud_text(x, y, text, color, scale, shadow)` | 场景像素坐标，颜色 0xRRGGBBAA |
+| `e.camera`、`e.hud_camera(x, y, w, h, fit=False, color=…)` | 掌机的相机（`docs/camera.md`，main 上新加的）：打开、状态、拍照；相机画面画进 HUD 的框里 |
 | `e.screenshot(path)`、`e.scene_size`、`e.stats`、`e.describe()` | `scene_size`：场景（HUD）像素，默认 (640, 360) |
 
 `e.frame` 的字段（颜色是 0xRRGGBB 的整数；距离是米；角度是弧度）：
@@ -129,6 +130,7 @@ ae.run(Game(), argv=sys.argv[1:], title="Game", fixed_hz=60, app_id="com.example
 | `ground_fog`、`ground_top`、`ground_ramp` | 0、9、30 | 贴地雾：强度 0..1、高度（米）、多远（米）到全强 |
 | `sun`、`character` | `travel` (0.35, −0.82, 0.45)，`ambient` 0.5，`diffuse` 0.5 | 两盏平行光：`travel` 是**光走的方向**（从光源指向被照的东西，长度随意），可以直接改 `e.frame.sun.travel = (…)`；材质选用哪盏（§2） |
 | `overlay` | 0 | 全屏叠色 0xRRGGBBAA（受伤闪红），A 为 0 不画 |
+| `camera_background` | `"off"` | 天空的位置画相机画面：`"cover"` 填满并裁切、`"fit"` 完整显示留黑边（`docs/camera.md`） |
 | `eye`、`yaw`、`pitch`、`fov_x`、`near`、`far` | | 相机；用了 `w.camera` 就由它决定（§3） |
 
 ## 2. 材质

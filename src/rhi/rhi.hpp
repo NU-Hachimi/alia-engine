@@ -11,7 +11,9 @@
 //   - Shaders are GLSL ES 3.00 source. Uniforms live in one std140 block named "Params"
 //     (set per draw with set_uniforms); samplers are named u_tex0..u_tex3 and bound to
 //     texture slots 0..3.
-//   - Textures and render targets are top-row-first in memory (read_pixels too).
+//   - RGBA8 textures and render targets are top-row-first in memory (read_pixels too): row 0 is
+//     sampled at v = 1. Data textures (R8, R16F, RGBA16F) are taken as they are: row 0 at v = 0,
+//     so texelFetch(ivec2(x, y)) is byte y * stride + x (camera frames, lookup tables).
 #pragma once
 
 #include <cstddef>
@@ -31,6 +33,7 @@ using BufferH = Handle<struct BufferTag>;
 using TextureH = Handle<struct TextureTag>;
 using TargetH = Handle<struct TargetTag>;
 using PipelineH = Handle<struct PipelineTag>;
+using FenceH = Handle<struct FenceTag>;
 
 enum class BufferUsage { Vertex, Index16 };
 struct BufferDesc {
@@ -40,13 +43,21 @@ struct BufferDesc {
     bool dynamic = false;  // updated every frame
 };
 
-enum class Format { RGBA8, Depth24, Depth32F };
+enum class Format { RGBA8, Depth24, Depth32F, R8, R16F, RGBA16F };  // 16F: uploaded from floats
 enum class Filter { Nearest, Linear };
 struct TextureDesc {
     int width = 0, height = 0;
     Format format = Format::RGBA8;
     Filter filter = Filter::Nearest;
-    const void* pixels = nullptr;  // RGBA8, top row first; may be null
+    const void* pixels = nullptr;  // RGBA8: top row first; R8: bytes; 16F: floats; may be null
+};
+
+// A Linux dmabuf holding one 8-bit plane (DRM_FORMAT_R8), imported without a copy (camera frames).
+struct DmabufDesc {
+    int fd = -1;  // not taken over: the caller keeps it (and may close it once imported)
+    int width = 0, height = 0;
+    uint32_t stride = 0, offset = 0;
+    uint64_t modifier = 0;  // DRM_FORMAT_MOD_LINEAR
 };
 
 struct TargetDesc {
@@ -111,12 +122,22 @@ public:
     virtual TextureH create_texture(const TextureDesc& desc) = 0;
     // Replaces all pixels of an RGBA8 texture (top row first).
     virtual void update_texture(TextureH tex, const void* pixels) = 0;
+    // Replaces all of a data texture (R8: row_bytes apart, 0 = tight; 16F: tightly packed floats).
+    virtual void update_data_texture(TextureH tex, const void* data, size_t row_bytes = 0) = 0;
+    // An R8 texture reading the dmabuf in place, NEAREST; {} when this GPU or display can't import it
+    // (then mmap the fd and update_data_texture instead). destroy() it like any texture.
+    virtual TextureH import_dmabuf(const DmabufDesc& desc, std::string* error) = 0;
     virtual TargetH create_target(const TargetDesc& desc) = 0;
     virtual PipelineH create_pipeline(const PipelineDesc& desc, std::string* error) = 0;
     virtual void destroy(BufferH h) = 0;
     virtual void destroy(TextureH h) = 0;
     virtual void destroy(TargetH h) = 0;
     virtual void destroy(PipelineH h) = 0;
+    virtual void destroy(FenceH h) = 0;
+
+    // A fence after everything submitted so far; signaled() once the GPU has finished it (never blocks).
+    virtual FenceH fence() = 0;
+    virtual bool signaled(FenceH h) = 0;
 
     // Commands. Everything between begin_pass and end_pass draws into that pass's target.
     virtual void begin_pass(const PassDesc& desc) = 0;

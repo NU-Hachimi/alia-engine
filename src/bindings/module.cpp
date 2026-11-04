@@ -349,6 +349,16 @@ struct PyAudio {
     nb::object engine_obj;
     runtime::Engine& e() const { return nb::cast<PyEngine&>(engine_obj).get(); }
 };
+struct PyCameraApi {
+    nb::object engine_obj;
+    runtime::Engine& e() const { return nb::cast<PyEngine&>(engine_obj).get(); }
+    runtime::Camera& c() const { return e().camera(); }
+};
+struct PyPhoto {
+    nb::object engine_obj;
+    uint32_t id;
+    const runtime::Camera::Photo* p() const { return nb::cast<PyEngine&>(engine_obj).get().camera().photo(id); }
+};
 struct PySound {
     nb::object engine_obj;
     uint32_t id;
@@ -471,7 +481,20 @@ NB_MODULE(alia_engine, m) {
         .def_rw("ground_ramp", &render::FrameDesc::ground_ramp)
         .def_rw("sun", &render::FrameDesc::sun)
         .def_rw("character", &render::FrameDesc::character)
-        .def_rw("overlay", &render::FrameDesc::overlay);
+        .def_rw("overlay", &render::FrameDesc::overlay)
+        .def_prop_rw(
+            "camera_background",
+            [](render::FrameDesc& f) {
+                return f.camera_background == render::CameraBackground::Cover ? "cover"
+                       : f.camera_background == render::CameraBackground::Fit ? "fit" : "off";
+            },
+            [](render::FrameDesc& f, const std::string& v) {
+                f.camera_background = choice<render::CameraBackground>(
+                    v, {{"off", render::CameraBackground::Off}, {"cover", render::CameraBackground::Cover},
+                        {"fit", render::CameraBackground::Fit}}, "camera_background");
+            },
+            "The camera's image instead of the sky (Engine.camera): 'cover' fills the scene and crops, 'fit' shows "
+            "all of it with black bars, 'off'. Black until there is an image.");
 
     nb::class_<Mesh>(m, "Mesh",
                      "Geometry: positions (float32 xyz), indices (uint16 triangles, CCW front faces), the colours "
@@ -891,6 +914,79 @@ NB_MODULE(alia_engine, m) {
         .def("set_volume", [](PyVoice& v, float volume, float fade) { v.m().set_volume(v.id, volume, fade); }, "volume"_a,
              "fade"_a = 0.0f)
         .def("set_pan", [](PyVoice& v, float pan) { v.m().set_pan(v.id, pan); }, "pan"_a);
+
+    nb::class_<runtime::Camera::Mode>(m, "CameraMode",
+                                      "The sensor mode the camera runs in. Intrinsics in the raw frame's pixels, before "
+                                      "turn; measured False: the module's typical values, not this unit's.")
+        .def_ro("width", &runtime::Camera::Mode::width)
+        .def_ro("height", &runtime::Camera::Mode::height)
+        .def_ro("fps", &runtime::Camera::Mode::fps)
+        .def_ro("turn", &runtime::Camera::Mode::turn)
+        .def_ro("order", &runtime::Camera::Mode::order)
+        .def_ro("fx", &runtime::Camera::Mode::fx)
+        .def_ro("fy", &runtime::Camera::Mode::fy)
+        .def_ro("cx", &runtime::Camera::Mode::cx)
+        .def_ro("cy", &runtime::Camera::Mode::cy)
+        .def_ro("k1", &runtime::Camera::Mode::k1)
+        .def_ro("k2", &runtime::Camera::Mode::k2)
+        .def_ro("p1", &runtime::Camera::Mode::p1)
+        .def_ro("p2", &runtime::Camera::Mode::p2)
+        .def_ro("k3", &runtime::Camera::Mode::k3)
+        .def_ro("measured", &runtime::Camera::Mode::measured)
+        .def_ro("line_time_ns", &runtime::Camera::Mode::line_time_ns);
+    nb::class_<runtime::Camera::Frame>(m, "CameraFrame", "The newest frame the camera sent.")
+        .def_ro("sequence", &runtime::Camera::Frame::sequence)
+        .def_ro("timestamp_ns", &runtime::Camera::Frame::timestamp_ns, "CLOCK_MONOTONIC, end of exposure")
+        .def_ro("exposure_us", &runtime::Camera::Frame::exposure_us)
+        .def_ro("gain", &runtime::Camera::Frame::gain)
+        .def_ro("wb_red", &runtime::Camera::Frame::wb_red)
+        .def_ro("wb_blue", &runtime::Camera::Frame::wb_blue)
+        .def_ro("colour_temperature", &runtime::Camera::Frame::colour_temperature);
+    nb::class_<PyPhoto>(m, "Photo", "A photo being taken (Camera.photo()): done, then jpeg or error.")
+        .def_prop_ro("done", [](PyPhoto& p) { return p.p() && p.p()->done; })
+        .def_prop_ro("jpeg",
+                     [](PyPhoto& p) -> nb::object {
+                         const auto* r = p.p();
+                         if (!r || !r->done || r->jpeg.empty()) return nb::none();
+                         return nb::bytes(reinterpret_cast<const char*>(r->jpeg.data()), r->jpeg.size());
+                     },
+                     "The photo (JPEG bytes: upright, the camera's current field of view), or None.")
+        .def_prop_ro("error", [](PyPhoto& p) -> nb::object {
+            const auto* r = p.p();
+            if (!r) return nb::str("the engine closed");
+            if (!r->done || r->error.empty()) return nb::none();
+            return nb::str(r->error.c_str());
+        });
+    nb::class_<PyCameraApi>(m, "DeviceCamera",
+                            "The handheld's camera, Engine.camera (docs/camera.md; not World.camera, the view). The cart's manifest declares [permissions] camera; "
+                            "the first open() asks the user (state 'pending'; the system pauses the game while it asks).")
+        .def(
+            "open",
+            [](PyCameraApi& c, std::optional<int> w, std::optional<int> h, bool full_fov) {
+                runtime::Engine& e = c.e();
+                c.c().open(w.value_or(e.scene_width()), h.value_or(e.scene_height()), full_fov);
+            },
+            "width"_a = nb::none(), "height"_a = nb::none(), "full_fov"_a = true,
+            "Ask for the camera, at the size you draw it (default: the scene's); full_fov False allows a centre crop "
+            "(narrower, cheaper). Never blocks: watch state. Open already: nothing (close() first for another size).")
+        .def("close", [](PyCameraApi& c) { c.e().close_camera(); }, "Done with it: the sensor powers down.")
+        .def_prop_ro("state", [](PyCameraApi& c) { return runtime::Camera::name(c.c().state()); },
+                     "closed, starting, pending (asking the user), running, paused; or why not: denied, revoked, busy, "
+                     "unavailable, suspended, failed.")
+        .def_prop_ro("message", [](PyCameraApi& c) { return c.c().message(); }, "What went wrong (for developers).")
+        .def_prop_ro("size",
+                     [](PyCameraApi& c) -> std::optional<std::pair<int, int>> {
+                         if (!c.c().image()) return std::nullopt;
+                         return std::pair{c.c().image_width(), c.c().image_height()};
+                     },
+                     "The image's size (turned upright), or None until the first frame.")
+        .def_prop_ro("mode", [](PyCameraApi& c) { return c.c().mode(); })
+        .def_prop_ro("frame", [](PyCameraApi& c) { return c.c().frame(); })
+        .def_prop_ro("zero_copy", [](PyCameraApi& c) { return c.c().zero_copy(); },
+                     "True when the GPU reads the frames in place (the handheld); False: copied (some simulators).")
+        .def("photo", [](PyCameraApi& c) { return PyPhoto{c.engine_obj, c.c().take_photo()}; },
+             "Take a photo, asynchronously: a Photo; poll .done. Only while the camera is open (else .error). The "
+             "engine doesn't keep it: save .jpeg yourself (save.write).");
 
     nb::class_<PyAudio>(m, "Audio",
                         "The engine's mixer (docs/api.md §7): one 48 kHz stereo stream to the system; music and effects "
@@ -1338,6 +1434,7 @@ NB_MODULE(alia_engine, m) {
              "Alia Pad until the motor hardware). Safe to call anyway.")
         .def_prop_ro("actions", [](nb::object self) { return PyActions{self}; }, "Named input actions (docs/api.md §7).")
         .def_prop_ro("audio", [](nb::object self) { return PyAudio{self}; }, "The mixer (docs/api.md §7).")
+        .def_prop_ro("camera", [](nb::object self) { return PyCameraApi{self}; }, "The camera (docs/camera.md).")
         .def(
             "particles",
             [](nb::object self, uint32_t mesh, nb::handle lifetime, nb::handle speed, std::array<float, 3> velocity,
@@ -1446,6 +1543,13 @@ NB_MODULE(alia_engine, m) {
              },
              "x"_a, "y"_a, "text"_a, "color"_a = 0xFFFFFFFFu, "scale"_a = 1.0f, "shadow"_a = 0u,
              "5x7 text (ASCII), 6 * scale pixels per character; shadow: 0xRRGGBBAA drop shadow, 0 for none.")
+        .def("hud_camera",
+             [](PyEngine& e, float x, float y, float w, float h, bool fit, uint32_t color) {
+                 e.get().hud_camera(x, y, w, h, fit, color);
+             },
+             "x"_a, "y"_a, "w"_a, "h"_a, "fit"_a = false, "color"_a = 0xFFFFFFFFu,
+             "The camera's image in a box, scene pixels: cropped to fill it, or with fit all of it, centred; color "
+             "multiplies it. Black until there is an image.")
         .def("end_frame", [](PyEngine& e) { e.get().end_frame(); }, "Render the draw list and present it.")
         .def("screenshot",
              [](PyEngine& e, const std::string& path, bool scene_only) {

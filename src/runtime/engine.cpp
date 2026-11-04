@@ -76,6 +76,7 @@ uint32_t Engine::load_sound(const std::string& path, std::string* error) {
 void Engine::close() {
     audio_device_.close();
     if (dev_) {
+        camera_.shutdown(*dev_);
         pipeline_.shutdown(*dev_);
         if (out_target_) dev_->destroy(out_target_);
         if (out_tex_) dev_->destroy(out_tex_);
@@ -104,6 +105,7 @@ bool Engine::poll(bool carry_pressed) {
     const uint32_t carried = carry_pressed ? input_.pressed : 0;
     input_ = surface_->input();
     input_.pressed |= carried;
+    camera_.update(*dev_);
     return true;
 }
 
@@ -203,9 +205,27 @@ void Engine::hud_text(float x, float y, std::string text, uint32_t color, float 
     hud_.push_back({render::HudCmd::Text, x, y, scale, 0, color, shadow, std::move(text)});
 }
 
+void Engine::hud_camera(float x, float y, float w, float h, bool fit, uint32_t color) {
+    render::HudCmd c{render::HudCmd::Camera, x, y, w, h, color, 0, {}};
+    const float iw = float(camera_.image_width()), ih = float(camera_.image_height());
+    if (camera_.image() && iw > 0 && ih > 0 && w > 0 && h > 0) {
+        const float box = w / h, image = iw / ih;
+        if (fit) {  // the whole image, the box shrunk to its aspect
+            const float nw = image > box ? w : h * image, nh = image > box ? w / image : h;
+            c.x += (w - nw) / 2, c.y += (h - nh) / 2, c.w = nw, c.h = nh;
+        } else if (image > box) {  // crop the sides
+            c.u0 = (1 - box / image) / 2, c.u1 = 1 - c.u0;
+        } else {  // crop top and bottom
+            c.v0 = (1 - image / box) / 2, c.v1 = 1 - c.v0;
+        }
+    }
+    hud_.push_back(std::move(c));
+}
+
 void Engine::end_frame() {
     const double t0 = now_ms();
     world_.collect(alpha_, instances_, frame_);
+    pipeline_.set_camera_image(camera_.image(), camera_.image_width(), camera_.image_height());
     pipeline_.render(*dev_, frame_, instances_, hud_);
     const bool window = surface_->has_default_framebuffer();
     const int ow = window ? surface_->width() : cfg_.width, oh = window ? surface_->height() : cfg_.height;

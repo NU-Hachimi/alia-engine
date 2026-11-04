@@ -20,6 +20,7 @@
 #include "audio/device.hpp"
 #include "audio/mixer.hpp"
 #include "runtime/actions.hpp"
+#include "runtime/camera.hpp"
 #include "platform/surface.hpp"
 #include "render/final_pass.hpp"
 #include "render/handheld.hpp"
@@ -72,6 +73,9 @@ public:
     // The gamepad's motors (low, high 0..1) for ms; false when it can't (see platform::Surface).
     bool rumble(float low, float high, int ms) { return surface_ && surface_->rumble(low, high, ms); }
     const platform::InputState& input() const { return input_; }
+    // The handheld's camera (camera.hpp, docs/camera.md): updated in poll(), drawn by end_frame().
+    Camera& camera() { return camera_; }
+    void close_camera() { if (dev_) camera_.close(*dev_); }
 
     uint32_t create_material(const render::Material& m, std::string* error) { return pipeline_.create_material(m, error); }
     bool update_material(uint32_t id, const render::Material& m, std::string* error) {
@@ -108,6 +112,9 @@ public:
     void draw(const render::Instance& in) { instances_.push_back(in); }
     void hud_rect(float x, float y, float w, float h, uint32_t color);
     void hud_text(float x, float y, std::string text, uint32_t color, float scale, uint32_t shadow);
+    // The camera's image in a HUD box: fit false crops it to fill the box, true shows all of it, centred
+    // (black while there is none); color multiplies it (0xRRGGBBAA).
+    void hud_camera(float x, float y, float w, float h, bool fit, uint32_t color);
     void end_frame();
 
     // Waits until the GPU has finished everything submitted so far (benchmarks: a 1-pixel read-back).
@@ -139,6 +146,7 @@ private:
     std::map<std::string, uint32_t> mesh_names_;  // every mesh loaded from a pack, by name
     float alpha_ = 1.0f;
     platform::InputState input_;
+    Camera camera_;
     std::vector<render::Instance> instances_;
     std::vector<render::HudCmd> hud_;
     FrameTiming timing_;

@@ -1,0 +1,23 @@
+# The camera test as a cart: `tools/alia.py cart` in apps/camera/ (docs/project.md, docs/camera.md).
+[cart]
+id          = "pad.alia.engine.camera"
+title       = "Camera Test"
+version     = "0.1.0"
+publisher   = "Alia Pad (dev cart)"
+description = "The engine's camera: the camera image behind a 3D scene, a viewfinder box, photos."
+
+[locale.zh]
+title = "相机测试"
+
+[runtime]
+type  = "python"
+entry = "main.py"
+
+[display]
+render = "640x360"
+
+[input]
+uses = ["gamepad"]
+
+[permissions]
+camera = true

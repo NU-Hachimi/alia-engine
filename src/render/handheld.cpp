@@ -148,6 +148,30 @@ out vec4 o_color;
 void main() { o_color = u_color; }
 )";
 
+// The camera's image behind the scene: q (0..1 over the scene, top-left origin) * scale + offset is
+// where in the image; outside it, black (Fit's bars).
+const char* kCameraBgFs = R"(#version 300 es
+precision highp float;
+layout(std140) uniform Params { vec4 u_map; vec4 u_scene; };  // xy: scale, zw: offset; u_scene.xy: scene size
+uniform sampler2D u_tex0;
+out vec4 o_color;
+void main() {
+    vec2 q = vec2(gl_FragCoord.x, u_scene.y - gl_FragCoord.y) / u_scene.xy;
+    vec2 uv = q * u_map.xy + u_map.zw;
+    bool inside = all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
+    o_color = inside ? vec4(texture(u_tex0, vec2(uv.x, 1.0 - uv.y)).rgb, 1.0) : vec4(0.0, 0.0, 0.0, 1.0);
+}
+)";
+
+const char* kHudCameraFs = R"(#version 300 es
+precision mediump float;
+uniform sampler2D u_tex0;  // the camera's image
+in vec2 v_uv;
+in vec4 v_color;
+out vec4 o_color;
+void main() { o_color = vec4(texture(u_tex0, v_uv).rgb, 1.0) * v_color; }
+)";
+
 const char* kHudVs = R"(#version 300 es
 precision highp float;
 layout(std140) uniform Params { vec4 u_size; };  // xy: scene size in pixels; zw: font atlas size
@@ -287,7 +311,16 @@ bool HandheldPipeline::init(rhi::Device& dev, int width, int height, std::string
     hud.alpha_blend = true;
     hud.name = "hud";
     if (overlay_) hud_ = dev.create_pipeline(hud, error);
-    return bool(hud_);
+    hud.fragment_source = kHudCameraFs;
+    hud.name = "hud-camera";
+    if (hud_) hud_camera_ = dev.create_pipeline(hud, error);
+
+    rhi::PipelineDesc camera_bg;
+    camera_bg.vertex_source = FULLSCREEN_VS;
+    camera_bg.fragment_source = kCameraBgFs;
+    camera_bg.name = "camera-background";
+    if (hud_camera_) camera_bg_ = dev.create_pipeline(camera_bg, error);
+    return bool(camera_bg_);
 }
 
 void HandheldPipeline::shutdown(rhi::Device& dev) {
@@ -296,8 +329,10 @@ void HandheldPipeline::shutdown(rhi::Device& dev) {
     meshes_.clear();
     if (hud_vb_) dev.destroy(hud_vb_);
     if (instance_vb_) dev.destroy(instance_vb_);
-    for (rhi::PipelineH p : {sky_, mesh_, mesh_two_sided_, blend_, blend_two_sided_, overlay_, hud_, instanced_, instanced_two_sided_})
+    for (rhi::PipelineH p : {sky_, mesh_, mesh_two_sided_, blend_, blend_two_sided_, overlay_, hud_, instanced_,
+                             instanced_two_sided_, camera_bg_, hud_camera_})
         if (p) dev.destroy(p);
+    camera_ = {};
     if (target_) dev.destroy(target_);
     for (rhi::TextureH t : {color_, depth_, palette_, font_})
         if (t) dev.destroy(t);
@@ -489,7 +524,23 @@ void HandheldPipeline::render(rhi::Device& dev, const FrameDesc& f, std::span<co
     pass.name = "scene";
     dev.begin_pass(pass);
 
-    {
+    if (f.camera_background != CameraBackground::Off) {
+        // The image's size on the scene: Cover the smallest that fills it, Fit the largest that fits.
+        float map[8] = {1, 1, -2, -2, float(w_), float(h_), 0, 0};  // no image: all outside, black
+        if (camera_ && camera_w_ > 0 && camera_h_ > 0) {
+            const float sx = float(w_) / float(camera_w_), sy = float(h_) / float(camera_h_);
+            const float s = f.camera_background == CameraBackground::Cover ? std::max(sx, sy) : std::min(sx, sy);
+            map[0] = float(w_) / (float(camera_w_) * s);
+            map[1] = float(h_) / (float(camera_h_) * s);
+            map[2] = (1 - map[0]) / 2;
+            map[3] = (1 - map[1]) / 2;
+        }
+        dev.set_pipeline(camera_bg_);
+        if (camera_) dev.set_texture(0, camera_, rhi::Filter::Linear);
+        else dev.set_texture(0, palette_);  // anything: nothing is sampled
+        dev.set_uniforms(map, sizeof map);
+        dev.draw(3);
+    } else {
         float sky[12];
         rgb(f.sky_top, sky);
         rgb(f.sky_horizon, sky + 4);
@@ -674,8 +725,33 @@ void HandheldPipeline::draw_hud(rhi::Device& dev, std::span<const HudCmd> hud) {
         for (HudVertex* q : {&a, &b, &c, &d}) rgba(color, q->color);
         v.insert(v.end(), {a, b, c, a, c, d});
     };
+    // Runs of quads drawn with one texture: the font atlas, or the camera's image (HudCmd::Camera).
+    struct Run {
+        size_t first;
+        bool camera;
+    };
+    std::vector<Run> runs;
+    auto run = [&](bool camera) {
+        if (runs.empty() || runs.back().camera != camera) runs.push_back({v.size(), camera});
+    };
     using namespace glcdfont;
     for (const HudCmd& cmd : hud) {
+        if (cmd.kind == HudCmd::Camera) {
+            if (!camera_) {  // no image yet: a black box of the same size
+                run(false);
+                quad(cmd.x, cmd.y, cmd.w, cmd.h, kSolidCell, 1, 1, 1, 1, 0x000000FFu & (cmd.color | 0xFFFFFF00u));
+                continue;
+            }
+            run(true);
+            // Texture pixels, top-left origin, the way quad() takes atlas cells (u_size.zw: the image's size).
+            const float cw = float(camera_w_), ch = float(camera_h_);
+            HudVertex a{cmd.x, cmd.y, cmd.u0 * cw, cmd.v0 * ch, {}}, b{cmd.x + cmd.w, cmd.y, cmd.u1 * cw, cmd.v0 * ch, {}},
+                c{cmd.x + cmd.w, cmd.y + cmd.h, cmd.u1 * cw, cmd.v1 * ch, {}}, d{cmd.x, cmd.y + cmd.h, cmd.u0 * cw, cmd.v1 * ch, {}};
+            for (HudVertex* q : {&a, &b, &c, &d}) rgba(cmd.color, q->color);
+            v.insert(v.end(), {a, b, c, a, c, d});
+            continue;
+        }
+        run(false);
         if (cmd.kind == HudCmd::Rect) {
             quad(cmd.x, cmd.y, cmd.w, cmd.h, kSolidCell, 1, 1, 1, 1, cmd.color);  // a texel well inside the solid cell
             continue;
@@ -698,12 +774,18 @@ void HandheldPipeline::draw_hud(rhi::Device& dev, std::span<const HudCmd> hud) {
         hud_vb_ = dev.create_buffer({rhi::BufferUsage::Vertex, hud_capacity_, nullptr, true});
     }
     dev.update_buffer(hud_vb_, v.data(), bytes);
-    const float size[4] = {float(w_), float(h_), float(kAtlasW), float(kAtlasH)};
-    dev.set_pipeline(hud_);
-    dev.set_texture(0, font_);
-    dev.set_uniforms(size, sizeof size);
-    dev.set_vertex_buffer(hud_vb_);
-    dev.draw(uint32_t(v.size()));
+    for (size_t i = 0; i < runs.size(); i++) {
+        const size_t end = i + 1 < runs.size() ? runs[i + 1].first : v.size();
+        if (end == runs[i].first) continue;
+        const bool cam = runs[i].camera;
+        const float size[4] = {float(w_), float(h_), cam ? float(camera_w_) : float(kAtlasW), cam ? float(camera_h_) : float(kAtlasH)};
+        dev.set_pipeline(cam ? hud_camera_ : hud_);
+        if (cam) dev.set_texture(0, camera_, rhi::Filter::Linear);
+        else dev.set_texture(0, font_);
+        dev.set_uniforms(size, sizeof size);
+        dev.set_vertex_buffer(hud_vb_);
+        dev.draw(uint32_t(end - runs[i].first), uint32_t(runs[i].first));
+    }
 }
 
 }  // namespace alia::render

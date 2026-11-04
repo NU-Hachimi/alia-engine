@@ -93,7 +93,7 @@ target_compile_options(alia_audio PRIVATE ${ALIA_WARNINGS})
 add_library(alia_rhi STATIC
   src/rhi/gles/device_gles.cpp)
 target_compile_options(alia_rhi PRIVATE ${ALIA_WARNINGS})
-target_link_libraries(alia_rhi PUBLIC alia_core PRIVATE PkgConfig::GLES)
+target_link_libraries(alia_rhi PUBLIC alia_core PRIVATE PkgConfig::GLES PkgConfig::EGL)
 
 # ---- L3 render ----
 add_library(alia_render STATIC
@@ -124,21 +124,30 @@ target_link_libraries(alia_world PUBLIC alia_render alia_asset alia_entt alia_gl
 add_library(alia_runtime STATIC
   src/runtime/actions.cpp
   src/runtime/app.cpp
+  src/runtime/camera.cpp
   src/runtime/engine.cpp
   src/runtime/locale.cpp
   src/runtime/saves.cpp)
 target_compile_options(alia_runtime PRIVATE ${ALIA_WARNINGS})
 # The Alia Pad cart SDK's headers (save.h, MIT), vendored in third_party/alia-sdk. With ALIA_SDK_DIR (the SDK's
 # include/alia), warn when the copy differs from it.
-target_include_directories(alia_runtime PRIVATE third_party/alia-sdk)
+target_include_directories(alia_runtime PRIVATE third_party/alia-sdk ${CMAKE_CURRENT_BINARY_DIR}/generated)
+# The SDK's reference camera shader (third_party/alia-sdk/camera/alia_camera.glsl), as a C++ string for the
+# camera's developing pass (src/runtime/camera.cpp).
+file(READ third_party/alia-sdk/camera/alia_camera.glsl ALIA_CAMERA_GLSL)
+file(CONFIGURE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/alia_camera_glsl.inc
+     CONTENT "R\"glsl(\n@ALIA_CAMERA_GLSL@)glsl\"\n" @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS third_party/alia-sdk/camera/alia_camera.glsl)
 set(ALIA_SDK_DIR "" CACHE PATH "the Alia Pad cart SDK's include/alia, to check the vendored copy against (optional)")
-if(ALIA_SDK_DIR AND EXISTS "${ALIA_SDK_DIR}/save.h")
-  file(SHA256 "${ALIA_SDK_DIR}/save.h" _upstream)
-  file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/third_party/alia-sdk/alia/save.h" _copy)
-  if(NOT _upstream STREQUAL _copy)
-    message(WARNING "third_party/alia-sdk/alia/save.h differs from ${ALIA_SDK_DIR}/save.h: copy it again")
+foreach(_h save.h camera.h camera_proto.h)
+  if(ALIA_SDK_DIR AND EXISTS "${ALIA_SDK_DIR}/${_h}")
+    file(SHA256 "${ALIA_SDK_DIR}/${_h}" _upstream)
+    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/third_party/alia-sdk/alia/${_h}" _copy)
+    if(NOT _upstream STREQUAL _copy)
+      message(WARNING "third_party/alia-sdk/alia/${_h} differs from ${ALIA_SDK_DIR}/${_h}: copy it again")
+    endif()
   endif()
-endif()
+endforeach()
 target_link_libraries(alia_runtime PUBLIC alia_platform alia_render alia_world alia_audio PRIVATE alia_asset)
 
 # ---- L7 bindings ----
@@ -244,6 +253,11 @@ if(ALIA_BUILD_TESTS)
     set_tests_properties(sandbox PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     add_test(NAME sticks COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/apps/sticks/src/main.py --headless --frames 30)
     set_tests_properties(sticks PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
+    add_test(NAME camera_app COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/apps/camera/src/main.py --headless --frames 30)
+    set_tests_properties(camera_app PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>;ALIA_CAMERA_SOCKET=/nonexistent")
+    # The camera against a fake camera service (protocol v2), headless.
+    add_test(NAME camera COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_camera.py)
+    set_tests_properties(camera PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     add_test(NAME kit COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_kit.py)
     set_tests_properties(kit PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     add_test(NAME plugin_tool COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_plugin_tool.py)
