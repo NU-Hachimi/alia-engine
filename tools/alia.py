@@ -35,6 +35,7 @@ relative links, so edits show at once):
 import argparse
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -512,6 +513,19 @@ def main(argv=None):
                                         "engine", "plugin", "setup"))
     ap.add_argument("rest", nargs=argparse.REMAINDER)
     a = ap.parse_args(argv)
+    if a.rest[:1] in (["-h"], ["--help"]):  # alia's help for the command (not --help handed to the game)
+        lines = __doc__.split("\n\n")[1].splitlines()
+        mine = [i for i, line in enumerate(lines) if re.match(rf"\s+alia ({a.command}\b|.*\| {a.command}\b|\w+ \| {a.command}\b)", line)]
+        for i in mine:
+            print(lines[i])
+            for more in lines[i + 1:]:
+                if re.match(r"\s+alia ", more) or not more.startswith("      "):
+                    break
+                print(more)
+        print("(arguments after -- go to the game or the tool as they are: alia run -- --help)")
+        return 0
+    if a.rest[:1] == ["--"]:
+        a.rest = a.rest[1:]
     try:
         if a.command == "new":
             if len(a.rest) != 1:

@@ -87,6 +87,14 @@ calls_text = [m.group(0) for f in ("alia.py", "alia_plugin.py")
               for m in re.finditer(r"\.(write_text|read_text)\((?:[^()]|\([^()]*\))*\)", (REPO / "tools" / f).read_text())]
 check(calls_text and all("encoding=" in c for c in calls_text),
       "the tool reads and writes text as UTF-8, never the system's encoding (cp1252, GBK on Windows)")
+import contextlib  # noqa: E402
+import io  # noqa: E402
+out = io.StringIO()
+saved_acart, alia.ACART = alia.ACART, "/nonexistent/acart"  # --help must not reach acart (nor the game)
+with contextlib.redirect_stdout(out):
+    code = alia.main(["launch", "--help"])
+alia.ACART = saved_acart
+check(code == 0 and "alia install | launch" in out.getvalue(), "alia launch --help: alia's help, the cart isn't launched")
 try:
     alia.Project.find(Path("/"))
     check(False, "outside a project: an error")
