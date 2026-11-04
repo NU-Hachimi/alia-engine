@@ -149,7 +149,9 @@ def build_engine(target="pc"):
             raise Fail("the board build needs the board's sysroot: ALIA_SYSROOT (docs/getting-started.md)")
         extra = ["-DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-board.cmake", f"-DALIA_SYSROOT={sysroot}"] if target == "board" else []
         run(["cmake", "-S", SOURCE, "-B", out, "-G", "Ninja", *extra])
-    run(["cmake", "--build", out, "--target", "alia_engine"], stdout=subprocess.DEVNULL)
+    # The PC build also makes alia_engine.pyi (a cross build can't import its module to generate it).
+    targets = ["alia_engine"] if target == "board" else ["alia_engine", "alia_engine_stub"]
+    run(["cmake", "--build", out, "--target", *targets], stdout=subprocess.DEVNULL)
     return out
 
 
@@ -190,7 +192,7 @@ def build_engine_debian():
     out = "build-release/x86_64"
     script = (f"[ -f {out}/build.ninja ] || cmake -S . -B {out} -G Ninja -DCMAKE_BUILD_TYPE=Release -DALIA_BUILD_TESTS=OFF "
               f"-DALIA_BUILD_APPS=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ > /dev/null && "
-              f"cmake --build {out} --target alia_engine > /dev/null && rm -rf {out}/alia-stage && "
+              f"cmake --build {out} --target alia_engine alia_engine_stub > /dev/null && rm -rf {out}/alia-stage && "
               f"cmake --install {out} --prefix {out}/alia-stage > /dev/null")  # paths are the container's
     run(["docker", "run", "--rm", "-u", f"{os.getuid()}:{os.getgid()}", "-v", f"{SOURCE}:/src", "-w", "/src", image,
          "sh", "-c", script])

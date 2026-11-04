@@ -367,8 +367,9 @@ bool HandheldPipeline::init(rhi::Device& dev, int width, int height, std::string
     tex_inst.cull_back = false;
     tex_inst.name = "tex-instanced-two-sided";
     if (tex_instanced_) tex_instanced_two_sided_ = dev.create_pipeline(tex_inst, error);
-    const uint8_t white[4] = {255, 255, 255, 255};
-    white_ = dev.create_texture({1, 1, rhi::Format::RGBA8, rhi::Filter::Nearest, white});
+    const uint8_t magenta[4] = {255, 0, 255, 255}, black[4] = {0, 0, 0, 255};
+    missing_ = dev.create_texture({1, 1, rhi::Format::RGBA8, rhi::Filter::Nearest, magenta});
+    black_ = dev.create_texture({1, 1, rhi::Format::RGBA8, rhi::Filter::Nearest, black});
 
     rhi::PipelineDesc sky;
     sky.vertex_source = FULLSCREEN_VS;
@@ -418,7 +419,7 @@ void HandheldPipeline::shutdown(rhi::Device& dev) {
     lens_ = {};
     if (target_) dev.destroy(target_);
     bound_textures_.clear();
-    for (rhi::TextureH t : {color_, depth_, palette_, font_, white_})
+    for (rhi::TextureH t : {color_, depth_, palette_, font_, missing_, black_})
         if (t) dev.destroy(t);
     *this = HandheldPipeline{};
 }
@@ -676,16 +677,17 @@ void HandheldPipeline::render_into(rhi::Device& dev, rhi::TargetH target, int W,
 
     rhi::PipelineH bound;
     dev.set_texture(0, palette_);
-    // A textured part's texture on slot 1 (white while it isn't there); u_fog.w: cutout.
+    // A textured part's texture on slot 1 (magenta while it isn't there, black while bound to nothing); u_fog.w: cutout.
     auto bind_material_texture = [&](const Material& mat) {
         p.fog[3] = mat.alpha_mode == AlphaMode::Cutout ? 1.0f : 0.0f;
         if (mat.color != ColorSource::Texture) return;
         for (const BoundTexture& b : bound_textures_)
-            if (b.id == mat.texture && b.texture) {
-                dev.set_texture(1, b.texture, b.linear ? rhi::Filter::Linear : rhi::Filter::Nearest);
+            if (b.id == mat.texture) {
+                if (b.texture) dev.set_texture(1, b.texture, b.linear ? rhi::Filter::Linear : rhi::Filter::Nearest);
+                else dev.set_texture(1, black_);
                 return;
             }
-        dev.set_texture(1, white_);
+        dev.set_texture(1, missing_);
     };
     auto draw_part = [&](const Mesh& m, const Part& part, const Instance& in, bool blend) {
         const Material& mat = materials_[part.material];

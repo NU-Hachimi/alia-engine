@@ -48,7 +48,8 @@ struct Material {
     float opacity = 1;          // Blend only
     bool double_sided = false;
     bool fog = true, ground_fog = true;
-    // ColorSource::Texture: a texture bound with bind_texture() (0 or not bound: white). The colour is the
+    // ColorSource::Texture: a texture bound with bind_texture() (0 or not bound: magenta, the "missing texture"
+    // colour; bound to nothing yet, like the camera before its first frame: black). The colour is the
     // texture, times the instance's tint (a palette colour) when it has one, then lit like any other.
     uint32_t texture = 0;
 };
@@ -205,7 +206,7 @@ private:
     rhi::PipelineH instanced_, instanced_two_sided_;
     // The same six for textured parts (TEXTURED in the shaders: lit per vertex, textured per pixel).
     rhi::PipelineH tex_mesh_, tex_mesh_two_sided_, tex_blend_, tex_blend_two_sided_, tex_instanced_, tex_instanced_two_sided_;
-    rhi::TextureH white_;  // a textured part whose texture isn't there
+    rhi::TextureH missing_, black_;  // a textured part whose texture isn't there / is bound but empty (the camera)
     struct BoundTexture {
         uint32_t id;
         rhi::TextureH texture;

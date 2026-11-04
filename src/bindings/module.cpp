@@ -385,7 +385,7 @@ bool repeat_wrap(const std::string& w) {
     return w == "repeat";
 }
 
-// A material's texture: a Texture, its id, or None (0: white).
+// A material's texture: a Texture, its id, or None (0: magenta, "missing").
 uint32_t texture_id(nb::handle t) {
     if (t.is_none()) return 0;
     if (nb::isinstance<PyTexture>(t)) return nb::cast<PyTexture&>(t).id;
@@ -488,7 +488,8 @@ NB_MODULE(alia_engine, m) {
         .def_prop_rw(
             "texture", [](render::Material& mat) { return mat.texture; },
             [](render::Material& mat, nb::handle t) { mat.texture = texture_id(t); },
-            "color=TEXTURE: a Texture (e.load_texture, e.lens.texture; docs/textures.md), or None: white. "
+            "color=TEXTURE: a Texture (e.load_texture, e.lens.texture; docs/textures.md). None, still loading or "
+            "destroyed: magenta (the 'missing texture' colour); the lens's before its first frame: black. "
             "update_material() changes it for meshes already built.");
 
     nb::class_<platform::InputState>(m, "Input")

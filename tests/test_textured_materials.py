@@ -1,6 +1,6 @@
 """Textured materials (docs/textures.md T2): uv on meshes and in packs, ColorSource.TEXTURE (the texture lit like
 any colour, the right way up), tints multiplying it, CUTOUT, BLEND with the texture's alpha, repeat tiling,
-swapping a material's texture, and a texture that isn't there (white)."""
+swapping a material's texture, and a texture that isn't there (magenta)."""
 
 import os
 import sys
@@ -92,7 +92,7 @@ with tempfile.TemporaryDirectory() as tmp:
     changes = sum(1 for a, b in zip(row, row[1:]) if (a[0] > 128) != (b[0] > 128))
     check(changes >= 5, f"wrap='repeat': 3 tiles, 6 stripes ({changes + 1} runs)")
 
-    # a material's texture swapped with update_material; a destroyed / unset texture: white
+    # a material's texture swapped with update_material; a destroyed / unset texture: magenta, "missing"
     e.update_material(unlit, ae.Material(shading=ae.Shading.UNLIT, color=ae.ColorSource.TEXTURE, texture=rep))
     p = shot((q, at(0, 0, 2)))
     check(near(pixel(p, 260, 120), RED[:3]) and near(pixel(p, 380, 120), BLUE[:3]), "update_material: the new texture")
@@ -100,7 +100,14 @@ with tempfile.TemporaryDirectory() as tmp:
     m = e.create_mesh(kit.quad(2, 2, e.create_material(ae.Material(shading=ae.Shading.UNLIT, color=ae.ColorSource.TEXTURE, texture=gone))))
     gone.destroy()
     p = shot((m, at(0, 0, 2)))
-    check(near(pixel(p, 320, 180), (255, 255, 255)), "a destroyed texture: white")
+    check(near(pixel(p, 320, 180), (255, 0, 255)), "a destroyed texture: magenta")
+    none = e.create_mesh(kit.quad(2, 2, e.create_material(ae.Material(shading=ae.Shading.UNLIT, color=ae.ColorSource.TEXTURE))))
+    p = shot((none, at(0, 0, 2)))
+    check(near(pixel(p, 320, 180), (255, 0, 255)), "no texture set: magenta")
+    lens_mat = e.create_mesh(kit.quad(2, 2, e.create_material(ae.Material(shading=ae.Shading.UNLIT, color=ae.ColorSource.TEXTURE,
+                                                                          texture=e.lens.texture))))
+    p = shot((lens_mat, at(0, 0, 2)))
+    check(pixel(p, 320, 180) == (0, 0, 0), "the lens's texture before the camera has a picture: black")
     try:
         e.create_mesh(ae.Mesh(array("f", [0, 0, 0, 1, 0, 0, 0, 1, 0]).tobytes(), array("H", [0, 1, 2]).tobytes(),
                               submeshes=[(0, 1, unlit)]))

@@ -41,7 +41,7 @@ e.hud_image(tex, x, y, w, h, fit=False, color=0xFFFFFFFF, src=None)   # src=(u0,
   放在最后，旧引擎读新包时跳过它）。`alia_kit` 有带 UV 的 `quad`、`textured_box`，`plane(..., tiles=)`。
 - **材质**：`ae.Material(color=ae.ColorSource.TEXTURE, texture=tex)`；颜色 = 纹理 × 光照（和调色板色一样受太阳、角色光、雾、淡出影响；
   光照还是按顶点算，纹理按像素乘上去）。`tint` 对纹理是乘一个调色板色（把一张灰度图染成不同颜色，省纹理）。
-  `update_material` 换纹理对已经建好的网格也生效；纹理还没加载好或者已经 `destroy()`：画成白色。
+  `update_material` 换纹理对已经建好的网格也生效；纹理是 None、还没加载好或者已经 `destroy()`：画成品红色（"缺纹理"的颜色，和真的白色纹理分得开）；相机还没有画面时是黑色。
 - **平铺**：纹理的 `wrap="repeat"`（`load_texture`、`create_texture`），UV 超过 0..1 就重复（地面、墙）；默认 `"clamp"`。
 - **半透明**：`BLEND` 时纹理的 alpha 乘 `opacity`。
 - **镂空**：`alpha_mode=CUTOUT`（纹理的 alpha 低于一半就不画）：树叶、栅栏、头发。不排序、照常合批，比 `BLEND` 便宜。
