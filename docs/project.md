@@ -20,6 +20,8 @@ mygame/
 ```
 
 - **代码和资产分开**：`src/` 只有手写的代码，生成的东西一律不放进来。游戏在 `content/assets/` 找它的资产（`Path(__file__).parent / "assets"`），开发时和卡带里是同一个位置（§3）。
+- **从美术工具到 `assets/`**：glTF（`.glb`）和 PNG 用 `alia assets` 构建（`alia.toml` 的 `[assets]`，`docs/import.md`），产物照样提交；
+  特别的资产（MIDI、自己的格式）写进 `[assets] build` 的构建函数，或者继续用自己的脚本。
 - **资产生产线是独立的**：`pipeline/` 有自己的依赖（Blender、fluidsynth、numpy……），自己的说明；它把产物写进 `assets/` 并提交。发布时资产已经定好了，所以卡带、游戏代码、引擎都不依赖它，打卡带也不跑它。只改代码的人不用装它的任何东西。
 - 只有代码、没有资产和插件的小游戏，只要 `alia.toml`、`cart/cart.toml`、`src/main.py`。
 
@@ -46,6 +48,7 @@ alia run [--demo ...]      # 在 Alia Pad 模拟器里玩（devkit 的 acart run
                            # 模拟器自己的选项交给它：--camera clip|scene|webcam|none、--camera-permission allow|ask|deny、--browser、--lang、--fresh……；-- 后面的全给游戏
 alia test [-k name]        # 测试（pytest），在运行时镜像里的无头引擎里（devkit 的 acart exec）
 alia exec tools/x.py ...   # 运行项目自己的工具，也在镜像里，游戏的模块和引擎都能 import（同 test 的 PYTHONPATH）
+alia assets [--check]      # 从 pipeline/ 的源文件（glTF、PNG）构建 assets/：只构建变了的；--check 过时就失败（docs/import.md）
 alia cart [--pc]           # 卡带：build/cart/（板子）并打包成 build/<name>.acart；--pc 只做模拟器的 build/cart-pc/（alia run 每次都做）
 alia install | launch | stop | logs    # 板子上的卡带（用 Alia Pad devkit 的工具）
 alia engine [pc|board]     # 只编译引擎模块（run、test、cart 需要时会自己做）

@@ -8,6 +8,8 @@
                                  --lang, --fresh ...) to it
     alia test [PYTEST ARGS...]   its tests, against a headless engine, in the simulator's image (acart exec)
     alia exec SCRIPT [ARGS...]   one of its tools (tools/...) there too, with the game and the engine importable
+    alia assets [--check|--force]   build assets/ from pipeline/ sources (glTF, PNG; alia.toml [assets],
+                                 docs/import.md) in the image: what changed; --check fails when they're stale
     alia cart [--pc]             the cart: build/cart/ (board) or build/cart-pc/, checked; the board's packed too
     alia install | launch | stop | logs     the cart on the board (the devkit's acart)
     alia setup [--board]         get ready: the engine for this version (and the board's), acart; from a checkout,
@@ -241,7 +243,8 @@ def _place(src, dest, link):
         except OSError:  # Windows without Developer Mode, exFAT...: a copy (edits show after the next alia command)
             pass
     if src.is_dir():
-        shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        # .alia-assets.json: what alia assets built each output from (docs/import.md), not for the cart
+        shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".alia-assets.json"))
     else:
         shutil.copy2(src, dest)
 
@@ -335,6 +338,16 @@ def cmd_exec(project, args):
     if not args:
         raise Fail("alia exec SCRIPT [ARGS...]")
     in_image(project, ["python3", *args])
+
+
+def cmd_assets(project, args):
+    """assets/ from pipeline/ (alia_assets.py, docs/import.md), in the image: the importer is copied into build/tools/,
+    which no cart holds."""
+    tools = project.build / "tools"
+    tools.mkdir(parents=True, exist_ok=True)
+    for name in ("alia_assets.py", "alia_import.py"):
+        shutil.copy2(HERE / name, tools / name)
+    in_image(project, ["python3", work_path(project, tools / "alia_assets.py"), "--root", "/work", *args])
 
 
 def cmd_test(project, args):
@@ -544,8 +557,8 @@ def cmd_setup(board=False):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="alia", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", action="version", version=f"alia {VERSION} ({'source: ' + str(SOURCE) if SOURCE else 'release'})")
-    ap.add_argument("command", choices=("new", "run", "test", "exec", "cart", "install", "launch", "stop", "logs",
-                                        "engine", "plugin", "setup"))
+    ap.add_argument("command", choices=("new", "run", "test", "exec", "assets", "cart", "install", "launch", "stop",
+                                        "logs", "engine", "plugin", "setup"))
     ap.add_argument("rest", nargs=argparse.REMAINDER)
     a = ap.parse_args(argv)
     if a.rest[:1] in (["-h"], ["--help"]):  # alia's help for the command (not --help handed to the game)
@@ -585,6 +598,8 @@ def main(argv=None):
             cmd_test(project, a.rest)
         elif a.command == "exec":
             cmd_exec(project, a.rest)
+        elif a.command == "assets":
+            cmd_assets(project, a.rest)
         elif a.command == "cart":
             cmd_cart(project, pc="--pc" in a.rest)
         elif a.command == "install":

@@ -114,6 +114,7 @@ e.hud_image(assets.textures["crate"], 8, 8, 32, 32)              # 包里的纹�
 | T1 ✅ | 纹理对象（PNG / JPEG、`create_texture`、异步加载）、`hud_image`、`e.lens.texture` | 相机测试卡带的相册、照片预览、UI 图标 |
 | T2 ✅ | 网格 UV、`TEXTURE` 材质、`CUTOUT`、平铺、相机画面贴在物体上 | 3D 游戏的贴图、树叶、电视屏幕 |
 | T3a ✅ | 资源包里的纹理（`load_assets`）、材质按名字引用纹理、`e.material(id)`、mipmap | 手绘资产 |
+| I1–I2 | 导入外部美术：glTF、PNG、`alia assets`（`docs/import.md`；排在 T3b 前面，2026-11-04 定） | 正常的美术流程 |
 | T3b | 图集 | UI、精灵、E7 的 2D |
 | T3c | ETC2 压缩 | 纹理多的正式游戏 |
 | T3d | 公告板粒子 | 火花、烟、魔法 |

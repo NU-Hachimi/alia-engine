@@ -43,6 +43,7 @@ git init && git add -A && git commit -m "mygame"
 
 - **编辑器的补全和类型检查**：`alia new` 顺便写了 `pyrightconfig.json`，VS Code（Pylance）、pyright 这类编辑器读它，就认得 `alia_engine`（随引擎附带的 `alia_engine.pyi`：每个类、函数的参数和说明）、`alia_kit` 和你自己的模块。先 `alia setup --editor` 一次，让 `build/dev/` 有引擎（已有的项目也用它加上配置）。
 - 改了 `src/` 的代码直接 `alia run`：每次都会把项目复制成 PC 版的卡带（`build/cart-pc/`）交给模拟器，没有编译这一步，很快。
+- 美术工具做的模型和图片（glTF、PNG）用 `alia assets` 变成资源包（`docs/import.md`）。
 - 项目自己的工具（截图、回归快照、生成资产……）用 `alia exec tools/x.py`：在同一个镜像里跑，能 `import` 游戏的模块和引擎，项目目录可写（镜像里是 `/work`）。镜像里有 pytest 和 pyflakes。
 - 资产（`.apak` 资源包、`.wav`、`.json`）放 `assets/`，游戏从 `content/assets/` 读（`docs/project.md` §1）。资源包可以在代码里生成（`alia_pack`），也可以由项目的 `pipeline/` 做好提交进来。
 - 用插件：在 `alia.toml` 的 `[engine] plugins` 里写上（`docs/plugins.md`）。
