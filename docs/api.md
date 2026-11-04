@@ -244,6 +244,7 @@ rigs = e.load_rigs("gen/rigs.apak")             # 或者 e.load_rigs(PackWriter(
 boss = w.spawn_rig(rigs["moose"], position=(0, 0, 0), yaw=0.0)   # 根物体；每块骨骼、每个部件槽是子物体
 
 boss.animator.play("walk", speed=64)           # 引擎自己推进：每秒多少相位单位（循环 0..256）
+boss.animator.play("cheer", speed=64, blend=0.3)  # 交叉淡入：0.3 秒从现在的姿态缓到新动画（smoothstep），不跳；animator.blending
 boss.animator.anim, boss.animator.phase = 2, 128   # 或者游戏每步自己设（Megalith 的用法）
 for ev in boss.animator.fired: ...             # 这一步跨过的事件：{"type", "phase", "anim", 事件自己的键}
 

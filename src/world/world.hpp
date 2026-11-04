@@ -136,6 +136,10 @@ struct AnimatorComponent {
     int next_ik = 1;
     int posed_anim = -1;            // what the bones show
     float posed_phase = -1;
+    // Crossfade (World::crossfade): the bones' local pose when it started, eased into the animation's over
+    // blend_time seconds (smoothstep); blend_time 0: none.
+    std::vector<std::pair<glm::vec3, glm::quat>> blend_from;
+    float blend_time = 0, blend_elapsed = 0;
 };
 
 // Rotation from yaw (about +Y), pitch (about +X), roll (about +Z), applied Ry * Rx * Rz like
@@ -187,6 +191,9 @@ public:
     // Advance playing animators by dt, collect the events crossed, pose the bones (the runtime calls
     // this after the game's fixed_update). collect() also poses animators whose phase changed.
     void update_animators(float dt);
+    // Ease from the pose the bones show now into whatever the animator plays next, over `seconds` (call it
+    // when switching animations: play(anim, blend=...)). 0: switch at once.
+    void crossfade(Entity root, float seconds);
 
     // Particles (docs/api.md §6). add_particles keeps a template (ids from 1); an emitter is a node
     // spawning from one, by `rate` and by burst(): n particles now, from the emitter or from `at`

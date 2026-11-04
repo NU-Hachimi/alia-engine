@@ -870,14 +870,20 @@ NB_MODULE(alia_engine, m) {
                      [](PyAnimator& a, float v) { a.node.a().speed = v; },
                      "Phase units per second the engine advances by itself; 0: the game sets phase.")
         .def("play",
-             [](PyAnimator& a, nb::handle anim, float speed, float phase) {
+             [](PyAnimator& a, nb::handle anim, float speed, float phase, float blend) {
                  auto& an = a.node.a();
                  PyRig rig{a.node.engine_obj, an.rig};
-                 an.anim = rig.anim_index(anim);
+                 const int index = rig.anim_index(anim);
+                 a.node.w().crossfade(a.node.entity, blend);  // from the pose shown now (before the switch)
+                 an.anim = index;
                  an.speed = speed;
                  an.phase = phase;
              },
-             "anim"_a, "speed"_a = 64.0f, "phase"_a = 0.0f, "Start an animation (name or index); speed in phase units/s.")
+             "anim"_a, "speed"_a = 64.0f, "phase"_a = 0.0f, "blend"_a = 0.0f,
+             "Start an animation (name or index); speed in phase units/s. blend: seconds to ease from the pose shown "
+             "now into it (a crossfade: idle -> wave without a snap); 0 switches at once.")
+        .def_prop_ro("blending", [](PyAnimator& a) { return a.node.a().blend_time > 0; },
+                     "True while a crossfade (play(..., blend=)) is still easing in.")
         .def_prop_ro("fired",
                      [](PyAnimator& a) {
                          auto& an = a.node.a();

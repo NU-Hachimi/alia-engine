@@ -182,11 +182,22 @@ void World::pose(AnimatorComponent& a) {
     static thread_local std::vector<LocalPose> local;
     const asset::RigData& r = rigs_[a.rig - 1];
     if (!pose_local(r, a.anim, a.phase, local)) return;
+    // A crossfade: from the pose it started from to this animation's, eased (smoothstep).
+    float w = 1;
+    if (a.blend_time > 0 && a.blend_elapsed < a.blend_time) {
+        const float t = std::clamp(a.blend_elapsed / a.blend_time, 0.0f, 1.0f);
+        w = t * t * (3 - 2 * t);
+    }
     for (size_t b = 0; b < a.bones.size() && b < local.size(); b++) {
         if (!reg_.valid(a.bones[b])) continue;
         auto& t = transform(a.bones[b]);
-        t.position = local[b].position;
-        t.rotation = local[b].rotation;
+        if (w < 1 && b < a.blend_from.size()) {
+            t.position = glm::mix(a.blend_from[b].first, local[b].position, w);
+            t.rotation = glm::slerp(a.blend_from[b].second, local[b].rotation, w);
+        } else {
+            t.position = local[b].position;
+            t.rotation = local[b].rotation;
+        }
     }
     a.posed_anim = a.anim;
     a.posed_phase = a.phase;
@@ -273,11 +284,33 @@ void World::solve(Entity root, AnimatorComponent& a, const IkConstraint& c) {
     turn(lower, arc(E2 - B2, A + dir * d - B2));
 }
 
+void World::crossfade(Entity root, float seconds) {
+    AnimatorComponent* a = animator(root);
+    if (!a) return;
+    if (seconds <= 0) {
+        a->blend_time = 0;
+        a->blend_from.clear();
+        return;
+    }
+    a->blend_from.resize(a->bones.size());
+    for (size_t b = 0; b < a->bones.size(); b++)
+        if (reg_.valid(a->bones[b])) {
+            const auto& t = transform(a->bones[b]);
+            a->blend_from[b] = {t.position, t.rotation};
+        }
+    a->blend_time = seconds;
+    a->blend_elapsed = 0;
+}
+
 void World::update_animators(float dt) {
     for (auto [e, a] : reg_.view<AnimatorComponent>().each()) {
         const asset::RigData& r = rigs_[a.rig - 1];
         a.fired.clear();
         if (!active_in_hierarchy(e)) continue;  // out of the world: frozen where it was
+        if (a.blend_time > 0) {
+            a.blend_elapsed += dt;
+            if (a.blend_elapsed >= a.blend_time) a.blend_time = 0, a.blend_from.clear();  // done: the animation alone
+        }
         if (a.anim < 0 || a.anim >= int(r.anims.size())) continue;
         const asset::RigAnimData& anim = r.anims[size_t(a.anim)];
         if (a.speed != 0) {
