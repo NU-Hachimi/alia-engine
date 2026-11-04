@@ -4,7 +4,7 @@
 id        = "pad.alia.engine.sandbox"
 title     = "Engine Sandbox"
 version   = "0.2.0"
-publisher = "Alia Pad (dev cart)"
+publisher   = "Alia Engine (dev cart)"
 description = "alia-engine sandbox: one exhibit per engine feature (materials, fog, lights, HUD), a free camera and live stats."
 
 [locale.zh]

@@ -3,7 +3,7 @@
 id          = "pad.alia.engine.camera"
 title       = "Camera Test"
 version     = "0.1.0"
-publisher   = "Alia Pad (dev cart)"
+publisher   = "Alia Engine (dev cart)"
 description = "The engine's camera: the camera image behind a 3D scene, a viewfinder box, photos."
 
 [locale.zh]
@@ -18,6 +18,9 @@ render = "640x360"
 
 [input]
 uses = ["gamepad"]
+
+[save]
+quota_kb = 16384  # full-resolution photos are 3–4 MB each
 
 [permissions]
 camera = true

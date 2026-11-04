@@ -3,7 +3,7 @@
 id          = "pad.alia.engine.sticks"
 title       = "Stick Test"
 version     = "0.1.0"
-publisher   = "Alia Pad (dev cart)"
+publisher   = "Alia Engine (dev cart)"
 description = "Shows both analog sticks' raw values, range and centre drift."
 
 [locale.zh]

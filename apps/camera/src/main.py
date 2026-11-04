@@ -8,11 +8,13 @@ Controls:
     A (east)       take a photo (saved in the cart's saves as photo-N.jpg)
     B (south)      background: cover / fit / off (with off, a viewfinder box instead)
     START          close the camera / open it again
+    SELECT         a screenshot of what the game draws (screen-N.png in the cart's saves; photos hold only the camera)
     left stick     turn the cube
 """
 
 import os
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))  # the cart's engine
@@ -29,7 +31,8 @@ class Game:
         self.cube = e.world.spawn(e.create_mesh(kit.box(1.2, 1.2, 1.2, kit.pal.ORANGE)), position=(0, 2, 5))
         e.world.camera.position, e.world.camera.yaw = (0, 2, 0), 0.0
         self.background = 0
-        self.photos, self.shot, self.note = 0, None, ""
+        self.photos, self.screens, self.shot, self.note = 0, 0, None, ""
+        self.want_screen = False
         self.rate, self.last_seq, self.last_t = 0.0, None, time.monotonic()
         e.camera.open()
 
@@ -45,6 +48,8 @@ class Game:
                 cam.open()
             else:
                 cam.close()
+        if i.pressed & ae.SELECT:
+            self.want_screen = True
         if i.pressed & ae.EAST and self.shot is None:
             self.shot, self.note = cam.photo(), "taking a photo..."
         if self.shot is not None and self.shot.done:
@@ -80,7 +85,20 @@ class Game:
                          f"{'ZERO COPY' if cam.zero_copy else 'COPIED'}", WHITE, 1, SHADOW)
         e.hud_text(4, 13, cam.message or f"background {BACKGROUNDS[self.background]}", DIM, 1)
         e.hud_text(4, h - 22, self.note, WHITE, 1, SHADOW)
-        e.hud_text(4, h - 11, "A: PHOTO   B: BACKGROUND   START: CLOSE / OPEN   LEFT STICK: CUBE", DIM, 1, SHADOW)
+        e.hud_text(4, h - 11, "A: PHOTO  B: BACKGROUND  START: CLOSE/OPEN  SELECT: SCREENSHOT  STICK: CUBE", DIM, 1, SHADOW)
+        if self.want_screen:  # the last frame shown (this one isn't drawn yet), into the saves
+            self.want_screen = False
+            self.screens += 1
+            name = f"screen-{self.screens}.png"
+            path = os.path.join(tempfile.gettempdir(), name)
+            try:
+                e.screenshot(path, scene_only=True)
+                with open(path, "rb") as f:
+                    ae.save.write(name, f.read())
+                os.remove(path)
+                self.note = f"saved {name}"
+            except (OSError, RuntimeError) as err:
+                self.note = f"screenshot failed: {err}"
 
 
 if __name__ == "__main__":

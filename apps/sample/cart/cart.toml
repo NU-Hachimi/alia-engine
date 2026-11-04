@@ -3,7 +3,7 @@
 id          = "pad.alia.engine.sample"
 title       = "Wisp Keeper"
 version     = "0.1.0"
-publisher   = "Alia Pad (sample)"
+publisher   = "Alia Engine (sample)"
 description = "alia-engine's sample game: catch the wisps drifting over a dusk meadow within 60 seconds. Left stick walks, right stick turns, B casts the beam."
 
 [locale.zh]
