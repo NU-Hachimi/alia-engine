@@ -354,6 +354,30 @@ struct PyCameraApi {
     runtime::Engine& e() const { return nb::cast<PyEngine&>(engine_obj).get(); }
     runtime::Camera& c() const { return e().camera(); }
 };
+struct PyTexture {
+    nb::object engine_obj;
+    uint32_t id;
+    runtime::Engine& e() const { return nb::cast<PyEngine&>(engine_obj).get(); }
+    const runtime::Engine::TextureInfo* info() const { return e().texture_info(id); }
+};
+
+std::vector<uint8_t> image_source(nb::handle source) {
+    if (nb::isinstance<nb::bytes>(source)) {
+        auto b = nb::cast<nb::bytes>(source);
+        const auto* p = reinterpret_cast<const uint8_t*>(b.data());
+        return {p, p + b.size()};
+    }
+    std::vector<uint8_t> out;
+    std::string err;
+    if (!runtime::Engine::read_content(nb::cast<std::string>(source), &out, &err)) throw std::runtime_error("alia_engine: " + err);
+    return out;
+}
+
+bool linear_filter(const std::string& f) {
+    if (f != "nearest" && f != "linear") throw nb::value_error("filter: 'nearest' or 'linear'");
+    return f == "linear";
+}
+
 struct PyPhoto {
     nb::object engine_obj;
     uint32_t id;
@@ -957,6 +981,40 @@ NB_MODULE(alia_engine, m) {
             if (!r->done || r->error.empty()) return nb::none();
             return nb::str(r->error.c_str());
         });
+    nb::class_<PyTexture>(m, "Texture",
+                          "A texture (docs/textures.md): an image on the GPU, for hud_image (and, later, materials).")
+        .def_prop_ro("width", [](PyTexture& t) { auto* i = t.info(); return t.id == runtime::Engine::kCameraTexture ? t.e().camera().image_width() : i ? i->width : 0; })
+        .def_prop_ro("height", [](PyTexture& t) { auto* i = t.info(); return t.id == runtime::Engine::kCameraTexture ? t.e().camera().image_height() : i ? i->height : 0; })
+        .def_prop_ro("ready",
+                     [](PyTexture& t) {
+                         if (t.id == runtime::Engine::kCameraTexture) return bool(t.e().camera().image());
+                         auto* i = t.info();
+                         return i && i->ready;
+                     },
+                     "True once it's on the GPU (load_texture_async: after a few frames).")
+        .def_prop_ro("done",
+                     [](PyTexture& t) {
+                         if (t.id == runtime::Engine::kCameraTexture) return true;
+                         auto* i = t.info();
+                         return !i || i->ready || !i->error.empty();
+                     },
+                     "Loaded or failed (then error).")
+        .def_prop_ro("error", [](PyTexture& t) -> nb::object {
+            auto* i = t.info();
+            if (t.id == runtime::Engine::kCameraTexture || (i && i->error.empty())) return nb::none();
+            return nb::str(i ? i->error.c_str() : "destroyed");
+        })
+        .def("update",
+             [](PyTexture& t, const nb::bytes& rgba) {
+                 std::string err;
+                 if (t.id == runtime::Engine::kCameraTexture) throw nb::value_error("the camera's texture is the camera's");
+                 if (!t.e().update_texture(t.id, reinterpret_cast<const uint8_t*>(rgba.data()), rgba.size(), &err))
+                     throw nb::value_error(err.c_str());
+             },
+             "rgba"_a, "New pixels: width * height * 4 bytes, top row first.")
+        .def("destroy", [](PyTexture& t) { if (t.id != runtime::Engine::kCameraTexture) t.e().destroy_texture(t.id); },
+             "Free it (GPU memory); drawing it afterwards draws nothing.");
+
     nb::class_<PyCameraApi>(m, "DeviceCamera",
                             "The handheld's camera, Engine.camera (docs/camera.md; not World.camera, the view). The cart's manifest declares [permissions] camera; "
                             "the first open() asks the user (state 'pending'; the system pauses the game while it asks).")
@@ -982,6 +1040,8 @@ NB_MODULE(alia_engine, m) {
                      "The image's size (turned upright), or None until the first frame.")
         .def_prop_ro("mode", [](PyCameraApi& c) { return c.c().mode(); })
         .def_prop_ro("frame", [](PyCameraApi& c) { return c.c().frame(); })
+        .def_prop_ro("texture", [](PyCameraApi& c) { return PyTexture{c.engine_obj, runtime::Engine::kCameraTexture}; },
+                     "The camera's image as a texture (hud_image; later materials), new each frame.")
         .def_prop_ro("zero_copy", [](PyCameraApi& c) { return c.c().zero_copy(); },
                      "True when the GPU reads the frames in place (the handheld); False: copied (some simulators).")
         .def("photo", [](PyCameraApi& c) { return PyPhoto{c.engine_obj, c.c().take_photo()}; },
@@ -1543,6 +1603,43 @@ NB_MODULE(alia_engine, m) {
              },
              "x"_a, "y"_a, "text"_a, "color"_a = 0xFFFFFFFFu, "scale"_a = 1.0f, "shadow"_a = 0u,
              "5x7 text (ASCII), 6 * scale pixels per character; shadow: 0xRRGGBBAA drop shadow, 0 for none.")
+        .def("load_texture",
+             [](nb::object self, nb::handle source, int max_size, const std::string& filter) {
+                 PyEngine& e = nb::cast<PyEngine&>(self);
+                 std::string err;
+                 uint32_t id = e.get().load_texture(image_source(source), max_size, linear_filter(filter), &err);
+                 if (!id) throw std::runtime_error("alia_engine: " + err);
+                 return PyTexture{self, id};
+             },
+             "source"_a, "max_size"_a = 2048, "filter"_a = "nearest",
+             "A PNG or JPEG: a path in the cart's content/, or bytes (ae.save.read(...)). Bigger than max_size "
+             "(the longer side, at most 2048): scaled down. filter: 'nearest' (sharp pixels) or 'linear' (photos).")
+        .def("load_texture_async",
+             [](nb::object self, nb::handle source, int max_size, const std::string& filter) {
+                 PyEngine& e = nb::cast<PyEngine&>(self);
+                 return PyTexture{self, e.get().load_texture_async(image_source(source), max_size, linear_filter(filter))};
+             },
+             "source"_a, "max_size"_a = 2048, "filter"_a = "nearest",
+             "As load_texture, decoded on another thread (a big photo takes about a second on the handheld): "
+             "the Texture is .done after a few frames, then .ready or .error.")
+        .def("create_texture",
+             [](nb::object self, int w, int h, const nb::bytes& rgba, const std::string& filter) {
+                 PyEngine& e = nb::cast<PyEngine&>(self);
+                 if (rgba.size() != size_t(w) * size_t(h) * 4) throw nb::value_error("rgba: width * height * 4 bytes");
+                 std::string err;
+                 uint32_t id = e.get().create_texture(w, h, reinterpret_cast<const uint8_t*>(rgba.data()), linear_filter(filter), &err);
+                 if (!id) throw nb::value_error(err.c_str());
+                 return PyTexture{self, id};
+             },
+             "width"_a, "height"_a, "rgba"_a, "filter"_a = "nearest", "A texture from RGBA8 bytes, top row first.")
+        .def("hud_image",
+             [](PyEngine& e, PyTexture& t, float x, float y, float w, float h, bool fit, uint32_t color,
+                std::optional<std::array<float, 4>> src) {
+                 e.get().hud_image(t.id, x, y, w, h, fit, color, src.value_or(std::array<float, 4>{0, 0, 1, 1}));
+             },
+             "texture"_a, "x"_a, "y"_a, "w"_a, "h"_a, "fit"_a = false, "color"_a = 0xFFFFFFFFu, "src"_a = nb::none(),
+             "A texture in a box, scene pixels: cropped to fill it, or with fit all of it, centred; color multiplies "
+             "it; src=(u0, v0, u1, v1) draws only that part (0..1, top-left origin). Nothing until it's loaded.")
         .def("hud_camera",
              [](PyEngine& e, float x, float y, float w, float h, bool fit, uint32_t color) {
                  e.get().hud_camera(x, y, w, h, fit, color);
@@ -1567,6 +1664,7 @@ NB_MODULE(alia_engine, m) {
                          d["culled"] = s.culled;
                          d["triangles"] = s.triangles;
                          d["draws"] = s.draws;
+                         d["texture_kb"] = e.get().texture_bytes() / 1024;
                          d["cpu_ms"] = t.cpu_ms;
                          d["frame_ms"] = t.frame_ms;
                          d["submit_ms"] = t.submit_ms;

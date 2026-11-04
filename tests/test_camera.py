@@ -14,6 +14,9 @@ import time
 
 import alia_engine as ae
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from png_pixels import near, pixel  # noqa: E402
+
 failures = 0
 
 
@@ -165,36 +168,6 @@ def frames(e, n, then=None):
         time.sleep(0.005)
 
 
-def pixel(path, x, y):
-    import zlib
-    data = open(path, "rb").read()
-    w, h = struct.unpack(">2I", data[16:24])
-    idat, pos = b"", 8
-    while pos < len(data):
-        n, kind = struct.unpack(">I4s", data[pos:pos + 8])
-        if kind == b"IDAT":
-            idat += data[pos + 8:pos + 8 + n]
-        pos += 12 + n
-    raw, bpp, stride = zlib.decompress(idat), 4, w * 4
-    rows, prev, i = [], bytearray(stride), 0
-    for _ in range(h):  # PNG filters (the engine writes with stb: any of them)
-        f, line = raw[i], bytearray(raw[i + 1:i + 1 + stride])
-        i += 1 + stride
-        for k in range(stride):
-            a = line[k - bpp] if k >= bpp else 0
-            b, c = prev[k], prev[k - bpp] if k >= bpp else 0
-            p = a + b - c
-            pr = a if abs(p - a) <= abs(p - b) and abs(p - a) <= abs(p - c) else b if abs(p - b) <= abs(p - c) else c
-            line[k] = (line[k] + (0, a, b, (a + b) // 2, pr)[f]) & 0xFF
-        rows.append(line)
-        prev = line
-    return tuple(rows[y][x * 4:x * 4 + 3])
-
-
-def near(a, b, tol=6):
-    return all(abs(p - q) <= tol for p, q in zip(a, b))
-
-
 expect = tuple(round((v - BLACK) / (255 - BLACK) * 255) for v in (200, 100, 50))
 dark = tuple(round((30 - BLACK) / (255 - BLACK) * 255) for _ in range(3))
 
@@ -243,6 +216,10 @@ with tempfile.TemporaryDirectory() as tmp:
     frames(e, 2, lambda e: e.hud_camera(0, 0, 160, 120))
     e.screenshot(shot, scene_only=True)
     check(near(pixel(shot, 40, 30), expect) and near(pixel(shot, 120, 90), dark), "hud_camera: the image in a box")
+    frames(e, 2, lambda e: e.hud_image(cam.texture, 0, 0, 160, 120))
+    e.screenshot(shot, scene_only=True)
+    check(cam.texture.ready and cam.texture.width == 320 and near(pixel(shot, 40, 30), expect),
+          "the camera's texture in hud_image, the same as hud_camera")
 
     # a photo: PAUSED while the sensor changes mode, a new MODE (imports redone), RESUMED, the JPEG
     shot_ = cam.photo()

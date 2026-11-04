@@ -18,6 +18,7 @@ cam.size        # 画面尺寸（转向之后），还没有画面时是 None
 cam.frame       # 最新一帧：sequence、timestamp_ns（单调时钟，曝光结束）、exposure_us、gain、wb_red、wb_blue、colour_temperature
 cam.mode        # 拿到的传感器模式：width、height、fps、turn、order；内参 fx fy cx cy k1 k2 p1 p2 k3（原始帧像素，转向之前）、measured
 cam.zero_copy   # True：GPU 直接读相机的缓冲区（掌机上）；False：每帧复制一次（有的模拟环境）
+cam.texture     # 相机画面当纹理（docs/textures.md）：e.hud_image(cam.texture, ...)；以后材质也能用
 
 e.frame.camera_background = "cover"   # 天空的位置画相机画面，填满、多出的裁掉；"fit"：完整显示，留黑边；"off"（默认）
 e.hud_camera(x, y, w, h)              # HUD 里画相机画面（取景框），场景像素：裁掉多出的部分填满这个框
@@ -53,7 +54,7 @@ shot = cam.photo()      # 拍照，异步：shot.done，然后 shot.jpeg（bytes
 
 ## 第一版不做
 
-- 相机画面当材质的纹理（引擎还没有纹理，等纹理一起做）。
+- 相机画面当材质的纹理：等带纹理的材质（`docs/textures.md` 的 T2）。
 - 标记 AR（识别打印的标记、把物体放在上面）：要内参实测和标记识别的库。
 - 存进相册：等 SDK 的接口；到时一个调用，相机照片和游戏截图都能存。
 - 录像。

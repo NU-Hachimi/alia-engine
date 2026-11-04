@@ -119,6 +119,7 @@ ae.run(Game(), argv=sys.argv[1:], title="Game", fixed_hz=60, app_id="com.example
 | `e.draw(mesh, model, tint=0, light=ae.Light.MATERIAL, fade=0, ground_fog=True)` | 本帧画一个实例；`model`：行主序 3×4（12 个数）；其余参数是实例覆盖（§2） |
 | `e.hud_rect(x, y, w, h, color)`、`e.hud_text(x, y, text, color, scale, shadow)` | 场景像素坐标，颜色 0xRRGGBBAA |
 | `e.camera`、`e.hud_camera(x, y, w, h, fit=False, color=…)` | 掌机的相机（`docs/camera.md`，main 上新加的）：打开、状态、拍照；相机画面画进 HUD 的框里 |
+| `e.load_texture(path 或 bytes, max_size=2048, filter="nearest")`、`e.load_texture_async(...)`、`e.create_texture(w, h, rgba)`、`e.hud_image(tex, x, y, w, h, fit=False, color=…, src=None)` | 纹理和 HUD 里的图片（`docs/textures.md`，main 上新加的）：PNG / JPEG；材质用纹理是下一步 |
 | `e.screenshot(path)`、`e.scene_size`、`e.stats`、`e.describe()` | `scene_size`：场景（HUD）像素，默认 (640, 360) |
 
 `e.frame` 的字段（颜色是 0xRRGGBB 的整数；距离是米；角度是弧度）：
@@ -452,7 +453,7 @@ kit.pal.RED, kit.pal.GRASS, ...        # 默认调色板的索引（网格、tin
 
 ## 8. 还没有的（以后）
 
-- **纹理**：材质里留了 `color = texture` 和 `alpha_mode = cutout` 的位置；ETC2、图集等 2D（E7）或者有游戏要用时再做（§9 第 3 条）。
+- **纹理的其余部分**：纹理对象和 HUD 里的图片已经有了（main 上）；带纹理的材质（网格 UV、`TEXTURE`、`CUTOUT`）、资源包里的纹理、ETC2、图集按 `docs/textures.md` 的 T2、T3 做。
 - **公告板粒子、光晕粒子**：老掌机（PS1、N64、PSP）的做法是**加法混合的公告板**：朝相机的小方块，贴一张中心亮、边缘透明的径向渐变，颜色直接加在背后的像素上。比半透明的壳便宜得多：两个三角形；加法和顺序无关，所以不用排序、一个模板仍然一次 instanced draw；开销只在填充率（估计 1000 个、每个约 20×20 像素，约 1.7 个全屏层，板上约 0.6 ms）。要做的三件事：材质加 `AlphaMode.ADD`（加法的部分也走实例化、不排序）；粒子系统里让方块朝相机；软边的贴图（等纹理），或者不用纹理的替代：中心亮、边缘为 0 的小圆盘，靠顶点颜色带一个亮度。现在的"发光"只是材质的 emissive + 不受雾影响（sandbox 的发光球）。
 - **粒子的其他部分**：子发射器（死亡、落地时触发另一个发射器）、从资源包读模板、粒子和碰撞体的碰撞。
 - **字体**：HUD 只有一套内置的 5×7 像素字体，只有 ASCII。要显示中文，得先做字体：资源包里的位图字体（一张字形图集 + 字符表），打包时只烘焙游戏用到的汉字（掌机上整套 CJK 太大），像素风的 CJK 字体（比如 12 px，要挑许可合适的）。和 E7 的 2D 一起做（`architecture.md` §6.3）。

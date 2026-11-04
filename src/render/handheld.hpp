@@ -84,12 +84,16 @@ struct DirLight {
 };
 
 struct HudCmd {
-    enum Kind : uint8_t { Rect, Text, Camera } kind = Rect;
+    enum Kind : uint8_t { Rect, Text, Image } kind = Rect;
     float x = 0, y = 0, w = 0, h = 0;  // scene pixels, top-left origin; text: w = scale
-    uint32_t color = 0xFFFFFFFF;       // 0xRRGGBBAA (Camera: multiplies the image)
+    uint32_t color = 0xFFFFFFFF;       // 0xRRGGBBAA (Image: multiplies the image)
     uint32_t shadow = 0;               // text: drop shadow 1 scaled pixel down-right (alpha 0 = none)
     std::string text;
-    float u0 = 0, v0 = 0, u1 = 1, v1 = 1;  // Camera: the part of the image, 0..1, top-left origin
+    // Image: an RGBA8 texture (RHI convention: top row at v = 1), its size, and the part drawn (0..1, top-left origin).
+    rhi::TextureH texture{};
+    int tex_w = 0, tex_h = 0;
+    bool linear = false;
+    float u0 = 0, v0 = 0, u1 = 1, v1 = 1;
 };
 
 enum class CameraBackground : uint8_t { Off, Cover, Fit };
@@ -148,7 +152,7 @@ public:
     bool has_mesh(uint32_t id) const;
 
     void set_palette(rhi::Device& dev, std::span<const uint8_t> rgb);  // up to 32 RGB triples
-    // The camera's image for camera_background and HudCmd::Camera ({}: none, drawn black).
+    // The camera's image for camera_background ({}: none, drawn black).
     void set_camera_image(rhi::TextureH image, int width, int height) { camera_ = image, camera_w_ = width, camera_h_ = height; }
 
     // Renders the scene target. Instances are frustum-culled by their bounding spheres. Opaque
@@ -183,7 +187,7 @@ private:
     int w_ = 0, h_ = 0;
     rhi::TextureH color_, depth_, palette_, font_;
     rhi::TargetH target_;
-    rhi::PipelineH sky_, mesh_, mesh_two_sided_, blend_, blend_two_sided_, overlay_, hud_, camera_bg_, hud_camera_;
+    rhi::PipelineH sky_, mesh_, mesh_two_sided_, blend_, blend_two_sided_, overlay_, hud_, camera_bg_, hud_image_;
     rhi::TextureH camera_;
     int camera_w_ = 0, camera_h_ = 0;
     rhi::PipelineH instanced_, instanced_two_sided_;

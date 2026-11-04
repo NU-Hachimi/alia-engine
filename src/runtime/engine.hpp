@@ -12,6 +12,7 @@
 // step, and opens the engine from the cart manifest and the run options.
 #pragma once
 
+#include <future>
 #include <map>
 #include <memory>
 #include <string>
@@ -19,6 +20,7 @@
 
 #include "audio/device.hpp"
 #include "audio/mixer.hpp"
+#include "core/image.hpp"
 #include "runtime/actions.hpp"
 #include "runtime/camera.hpp"
 #include "platform/surface.hpp"
@@ -115,6 +117,28 @@ public:
     // The camera's image in a HUD box: fit false crops it to fill the box, true shows all of it, centred
     // (black while there is none); color multiplies it (0xRRGGBBAA).
     void hud_camera(float x, float y, float w, float h, bool fit, uint32_t color);
+
+    // Textures (docs/textures.md): ids from 1; kCameraTexture is the camera's image. A texture loading in
+    // the background (load_texture_async) has ready false until poll() uploads it, or an error.
+    static constexpr uint32_t kCameraTexture = 0xFFFFFFFFu;
+    struct TextureInfo {
+        int width = 0, height = 0;
+        bool linear = false, ready = false;
+        std::string error;
+    };
+    // A file relative to the cart's content/ (asset::content_path), whole.
+    static bool read_content(const std::string& path, std::vector<uint8_t>* out, std::string* error);
+    uint32_t load_texture(const std::vector<uint8_t>& png_or_jpeg, int max_side, bool linear, std::string* error);
+    uint32_t load_texture_async(std::vector<uint8_t> png_or_jpeg, int max_side, bool linear);
+    uint32_t create_texture(int width, int height, const uint8_t* rgba, bool linear, std::string* error);
+    bool update_texture(uint32_t id, const uint8_t* rgba, size_t size, std::string* error);
+    void destroy_texture(uint32_t id);
+    const TextureInfo* texture_info(uint32_t id) const;
+    size_t texture_bytes() const { return texture_bytes_; }  // RGBA8 on the GPU, all textures
+    // A texture in a HUD box (the same rules as hud_camera); src: the part of it (0..1, top-left origin).
+    // Nothing while it isn't loaded.
+    void hud_image(uint32_t texture, float x, float y, float w, float h, bool fit, uint32_t color,
+                   std::array<float, 4> src = {0, 0, 1, 1});
     void end_frame();
 
     // Waits until the GPU has finished everything submitted so far (benchmarks: a 1-pixel read-back).
@@ -147,6 +171,16 @@ private:
     float alpha_ = 1.0f;
     platform::InputState input_;
     Camera camera_;
+    struct Tex {
+        TextureInfo info;
+        rhi::TextureH handle;
+        std::future<std::pair<Image, std::string>> pending;  // load_texture_async: decoding on another thread (or why not)
+    };
+    std::map<uint32_t, Tex> textures_;
+    uint32_t next_texture_ = 1;
+    size_t texture_bytes_ = 0;
+    void upload(uint32_t id, Tex& t, const Image& img);
+    void push_image(render::HudCmd c, rhi::TextureH tex, int tw, int th, bool linear, bool fit);
     std::vector<render::Instance> instances_;
     std::vector<render::HudCmd> hud_;
     FrameTiming timing_;

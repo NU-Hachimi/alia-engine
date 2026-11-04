@@ -258,6 +258,8 @@ if(ALIA_BUILD_TESTS)
     # The camera against a fake camera service (protocol v2), headless.
     add_test(NAME camera COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_camera.py)
     set_tests_properties(camera PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
+    add_test(NAME textures COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_textures.py)
+    set_tests_properties(textures PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     add_test(NAME kit COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_kit.py)
     set_tests_properties(kit PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     add_test(NAME plugin_tool COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_plugin_tool.py)

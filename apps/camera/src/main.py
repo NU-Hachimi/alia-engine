@@ -9,6 +9,7 @@ Controls:
     B (south)      background: cover / fit / off (with off, a viewfinder box instead)
     START          close the camera / open it again
     SELECT         a screenshot of what the game draws (screen-N.png in the cart's saves; photos hold only the camera)
+    X (north)      the album: the photos and screenshots (src/album.py)
     left stick     turn the cube
 """
 
@@ -21,6 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "pyt
 
 import alia_engine as ae  # noqa: E402
 import alia_kit as kit  # noqa: E402
+from album import Album  # noqa: E402
 
 WHITE, DIM, SHADOW = 0xFFFFFFFF, 0xC0C8D0FF, 0x000000C0
 BACKGROUNDS = ("cover", "fit", "off")
@@ -31,13 +33,26 @@ class Game:
         self.cube = e.world.spawn(e.create_mesh(kit.box(1.2, 1.2, 1.2, kit.pal.ORANGE)), position=(0, 2, 5))
         e.world.camera.position, e.world.camera.yaw = (0, 2, 0), 0.0
         self.background = 0
-        self.photos, self.screens, self.shot, self.note = 0, 0, None, ""
+        # carry on after what's saved already (a relaunch must not write over photo-1)
+        def last(prefix):
+            nums = [int(n[len(prefix):].split(".")[0]) for n in ae.save.names()
+                    if n.startswith(prefix) and n[len(prefix):].split(".")[0].isdigit()]
+            return max(nums, default=0)
+        self.photos, self.screens, self.shot, self.note = last("photo-"), last("screen-"), None, ""
         self.want_screen = False
+        self.album = None
         self.rate, self.last_seq, self.last_t = 0.0, None, time.monotonic()
         e.camera.open()
 
     def fixed_update(self, e, dt):
         i = e.input
+        if self.album:
+            if not self.album.step(i):
+                self.album = None
+            return
+        if i.pressed & ae.NORTH:
+            self.album = Album(e)
+            return
         self.cube.yaw += (0.6 + i.lx * 3) * dt
         self.cube.pitch += i.ly * 3 * dt
         cam = e.camera
@@ -71,6 +86,10 @@ class Game:
             self.last_seq, self.last_t = seq, now
 
     def render(self, e, alpha):
+        if self.album:
+            self.album.update()
+            self.album.render()
+            return
         cam = e.camera
         w, h = e.scene_size
         if BACKGROUNDS[self.background] == "off":
@@ -85,7 +104,7 @@ class Game:
                          f"{'ZERO COPY' if cam.zero_copy else 'COPIED'}", WHITE, 1, SHADOW)
         e.hud_text(4, 13, cam.message or f"background {BACKGROUNDS[self.background]}", DIM, 1)
         e.hud_text(4, h - 22, self.note, WHITE, 1, SHADOW)
-        e.hud_text(4, h - 11, "A: PHOTO  B: BACKGROUND  START: CLOSE/OPEN  SELECT: SCREENSHOT  STICK: CUBE", DIM, 1, SHADOW)
+        e.hud_text(4, h - 11, "A: PHOTO  B: BACKGROUND  X: ALBUM  START: CAMERA  SELECT: SCREENSHOT", DIM, 1, SHADOW)
         if self.want_screen:  # the last frame shown (this one isn't drawn yet), into the saves
             self.want_screen = False
             self.screens += 1

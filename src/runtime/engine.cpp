@@ -75,7 +75,11 @@ uint32_t Engine::load_sound(const std::string& path, std::string* error) {
 
 void Engine::close() {
     audio_device_.close();
+    for (auto& [id, t] : textures_)
+        if (t.pending.valid()) t.pending.wait();  // a decode still running holds no engine state, but let it end
     if (dev_) {
+        for (auto& [id, t] : textures_)
+            if (t.handle) dev_->destroy(t.handle);
         camera_.shutdown(*dev_);
         pipeline_.shutdown(*dev_);
         if (out_target_) dev_->destroy(out_target_);
@@ -90,6 +94,8 @@ void Engine::close() {
     hud_.clear();
     input_ = {};
     world_ = world::World();  // the scene and the loaded rigs
+    textures_.clear();
+    texture_bytes_ = 0;
     mesh_names_.clear();
     alpha_ = 1.0f;
 }
@@ -106,6 +112,12 @@ bool Engine::poll(bool carry_pressed) {
     input_ = surface_->input();
     input_.pressed |= carried;
     camera_.update(*dev_);
+    for (auto& [id, t] : textures_) {  // background decodes that are done: onto the GPU
+        if (!t.pending.valid() || t.pending.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+        auto [img, err] = t.pending.get();
+        if (img.empty()) t.info.error = err;
+        else upload(id, t, img);
+    }
     return true;
 }
 
@@ -205,21 +217,151 @@ void Engine::hud_text(float x, float y, std::string text, uint32_t color, float 
     hud_.push_back({render::HudCmd::Text, x, y, scale, 0, color, shadow, std::move(text)});
 }
 
-void Engine::hud_camera(float x, float y, float w, float h, bool fit, uint32_t color) {
-    render::HudCmd c{render::HudCmd::Camera, x, y, w, h, color, 0, {}};
-    const float iw = float(camera_.image_width()), ih = float(camera_.image_height());
-    if (camera_.image() && iw > 0 && ih > 0 && w > 0 && h > 0) {
-        const float box = w / h, image = iw / ih;
-        if (fit) {  // the whole image, the box shrunk to its aspect
-            const float nw = image > box ? w : h * image, nh = image > box ? w / image : h;
-            c.x += (w - nw) / 2, c.y += (h - nh) / 2, c.w = nw, c.h = nh;
+// An image in a box: fit shows all of it (the box shrunk to its aspect, centred), otherwise it's cropped
+// to fill the box; c's u0..v1 is the part of the texture to start from.
+void Engine::push_image(render::HudCmd c, rhi::TextureH tex, int tw, int th, bool linear, bool fit) {
+    c.kind = render::HudCmd::Image;
+    c.texture = tex, c.tex_w = tw, c.tex_h = th, c.linear = linear;
+    const float iw = float(tw) * (c.u1 - c.u0), ih = float(th) * (c.v1 - c.v0);
+    if (iw > 0 && ih > 0 && c.w > 0 && c.h > 0) {
+        const float box = c.w / c.h, image = iw / ih;
+        if (fit) {
+            const float nw = image > box ? c.w : c.h * image, nh = image > box ? c.w / image : c.h;
+            c.x += (c.w - nw) / 2, c.y += (c.h - nh) / 2, c.w = nw, c.h = nh;
         } else if (image > box) {  // crop the sides
-            c.u0 = (1 - box / image) / 2, c.u1 = 1 - c.u0;
+            const float cut = (c.u1 - c.u0) * (1 - box / image) / 2;
+            c.u0 += cut, c.u1 -= cut;
         } else {  // crop top and bottom
-            c.v0 = (1 - image / box) / 2, c.v1 = 1 - c.v0;
+            const float cut = (c.v1 - c.v0) * (1 - image / box) / 2;
+            c.v0 += cut, c.v1 -= cut;
         }
     }
     hud_.push_back(std::move(c));
+}
+
+void Engine::hud_camera(float x, float y, float w, float h, bool fit, uint32_t color) {
+    if (!camera_.image()) {  // no image yet: a black box of the same size
+        hud_rect(x, y, w, h, 0x000000FFu & (color | 0xFFFFFF00u));
+        return;
+    }
+    render::HudCmd c{render::HudCmd::Image, x, y, w, h, color, 0, {}};
+    push_image(std::move(c), camera_.image(), camera_.image_width(), camera_.image_height(), true, fit);
+}
+
+void Engine::hud_image(uint32_t id, float x, float y, float w, float h, bool fit, uint32_t color, std::array<float, 4> src) {
+    if (id == kCameraTexture) {
+        if (src == std::array<float, 4>{0, 0, 1, 1}) return hud_camera(x, y, w, h, fit, color);
+        if (!camera_.image()) return;
+    }
+    render::HudCmd c{render::HudCmd::Image, x, y, w, h, color, 0, {}};
+    c.u0 = src[0], c.v0 = src[1], c.u1 = src[2], c.v1 = src[3];
+    if (id == kCameraTexture)
+        return push_image(std::move(c), camera_.image(), camera_.image_width(), camera_.image_height(), true, fit);
+    auto it = textures_.find(id);
+    if (it == textures_.end() || !it->second.handle) return;
+    const TextureInfo& i = it->second.info;
+    push_image(std::move(c), it->second.handle, i.width, i.height, i.linear, fit);
+}
+
+void Engine::upload(uint32_t id, Tex& t, const Image& img) {
+    (void)id;
+    if (t.handle) {
+        dev_->destroy(t.handle);
+        texture_bytes_ -= size_t(t.info.width) * t.info.height * 4;
+    }
+    t.handle = dev_->create_texture({img.width, img.height, rhi::Format::RGBA8,
+                                     t.info.linear ? rhi::Filter::Linear : rhi::Filter::Nearest, img.rgba.data()});
+    t.info.width = img.width, t.info.height = img.height, t.info.ready = true, t.info.error.clear();
+    texture_bytes_ += size_t(img.width) * img.height * 4;
+}
+
+namespace {
+constexpr int kMaxTextureSide = 2048;
+int clamp_side(int max_side) { return max_side <= 0 ? kMaxTextureSide : std::min(max_side, kMaxTextureSide); }
+}  // namespace
+
+bool Engine::read_content(const std::string& path, std::vector<uint8_t>* out, std::string* error) {
+    const std::string p = asset::content_path(path);
+    FILE* f = std::fopen(p.c_str(), "rb");
+    if (!f) {
+        *error = p + ": cannot open";
+        return false;
+    }
+    out->clear();
+    uint8_t chunk[65536];
+    for (size_t n; (n = std::fread(chunk, 1, sizeof chunk, f)) > 0;) out->insert(out->end(), chunk, chunk + n);
+    std::fclose(f);
+    return true;
+}
+
+uint32_t Engine::load_texture(const std::vector<uint8_t>& bytes, int max_side, bool linear, std::string* error) {
+    Image img;
+    if (!decode_image(bytes.data(), bytes.size(), &img, error)) return 0;
+    const uint32_t id = next_texture_++;
+    Tex& t = textures_[id];
+    t.info.linear = linear;
+    upload(id, t, shrink(img, clamp_side(max_side)));
+    return id;
+}
+
+uint32_t Engine::load_texture_async(std::vector<uint8_t> bytes, int max_side, bool linear) {
+    const uint32_t id = next_texture_++;
+    Tex& t = textures_[id];
+    t.info.linear = linear;
+    const int side = clamp_side(max_side);
+    t.pending = std::async(std::launch::async, [bytes = std::move(bytes), side]() {
+        Image img;
+        std::string err;
+        if (!decode_image(bytes.data(), bytes.size(), &img, &err)) return std::pair{Image{}, err};
+        return std::pair{shrink(img, side), std::string()};
+    });
+    return id;
+}
+
+uint32_t Engine::create_texture(int width, int height, const uint8_t* rgba, bool linear, std::string* error) {
+    if (width <= 0 || height <= 0 || width > kMaxTextureSide || height > kMaxTextureSide) {
+        *error = "texture size: 1.." + std::to_string(kMaxTextureSide) + " on each side";
+        return 0;
+    }
+    Image img;
+    img.width = width, img.height = height;
+    img.rgba.assign(rgba, rgba + size_t(width) * height * 4);
+    const uint32_t id = next_texture_++;
+    Tex& t = textures_[id];
+    t.info.linear = linear;
+    upload(id, t, img);
+    return id;
+}
+
+bool Engine::update_texture(uint32_t id, const uint8_t* rgba, size_t size, std::string* error) {
+    auto it = textures_.find(id);
+    if (it == textures_.end() || !it->second.handle) {
+        *error = "no such texture (or not loaded yet)";
+        return false;
+    }
+    const TextureInfo& i = it->second.info;
+    if (size != size_t(i.width) * i.height * 4) {
+        *error = "update: width * height * 4 bytes of RGBA";
+        return false;
+    }
+    dev_->update_texture(it->second.handle, rgba);
+    return true;
+}
+
+void Engine::destroy_texture(uint32_t id) {
+    auto it = textures_.find(id);
+    if (it == textures_.end()) return;
+    if (it->second.pending.valid()) it->second.pending.wait();
+    if (it->second.handle) {
+        dev_->destroy(it->second.handle);
+        texture_bytes_ -= size_t(it->second.info.width) * it->second.info.height * 4;
+    }
+    textures_.erase(it);
+}
+
+const Engine::TextureInfo* Engine::texture_info(uint32_t id) const {
+    auto it = textures_.find(id);
+    return it == textures_.end() ? nullptr : &it->second.info;
 }
 
 void Engine::end_frame() {
