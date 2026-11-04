@@ -76,10 +76,13 @@ class Game:
             self.shot, self.note = cam.photo(scene=scene, hud=hud), "taking a photo..."
         if self.shot is not None and self.shot.done:
             if self.shot.jpeg:
-                self.photos += 1
-                name = f"photo-{self.photos}.jpg"
-                ae.save.write(name, self.shot.jpeg)
-                self.note = f"saved {name} ({len(self.shot.jpeg) // 1024} KiB)"
+                name = f"photo-{self.photos + 1}.jpg"
+                try:
+                    ae.save.write(name, self.shot.jpeg)
+                    self.photos += 1
+                    self.note = f"saved {name} ({len(self.shot.jpeg) // 1024} KiB)"
+                except OSError as err:  # ENOSPC: the cart's save quota ([save] quota_kb) is full
+                    self.note = f"not saved: {err.strerror or err}. X: the album, Y twice there deletes"
             else:
                 self.note = f"photo failed: {self.shot.error}"
             self.shot = None
@@ -114,14 +117,15 @@ class Game:
         e.hud_text(4, h - 11, "A: PHOTO  Y: PHOTO KIND  B: BACKGROUND  X: ALBUM  START: CAMERA  SELECT: SCREEN", DIM, 1, SHADOW)
         if self.want_screen:  # the last frame shown (this one isn't drawn yet), into the saves
             self.want_screen = False
-            self.screens += 1
-            name = f"screen-{self.screens}.png"
+            name = f"screen-{self.screens + 1}.png"
             path = os.path.join(tempfile.gettempdir(), name)
             try:
                 e.screenshot(path, scene_only=True)
                 with open(path, "rb") as f:
-                    ae.save.write(name, f.read())
+                    data = f.read()
                 os.remove(path)
+                ae.save.write(name, data)
+                self.screens += 1
                 self.note = f"saved {name}"
             except (OSError, RuntimeError) as err:
                 self.note = f"screenshot failed: {err}"
