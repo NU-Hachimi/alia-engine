@@ -1518,6 +1518,13 @@ NB_MODULE(alia_engine, m) {
              },
              "id"_a, "material"_a, "Changes light, emissive, alpha, fog ... for meshes already built; shading, "
              "color and palette_index only for meshes built afterwards.")
+        .def("destroy_material",
+             [](PyEngine& e, uint32_t id) {
+                 std::string err;
+                 if (!e.get().destroy_material(id, &err)) throw nb::value_error(err.c_str());
+             },
+             "id"_a, "Free a material no mesh uses any more (destroy_mesh those first: else ValueError). Its id may be "
+             "given to a material created later.")
         .def("create_mesh", &PyEngine::create_mesh, "mesh"_a)
         .def("rumble", [](PyEngine& e, float low, float high, int ms) { return e.get().rumble(low, high, ms); },
              "low"_a, "high"_a, "ms"_a,

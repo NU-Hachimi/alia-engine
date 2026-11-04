@@ -80,6 +80,7 @@ public:
     void close_lens() { if (dev_) lens_.close(*dev_); }
 
     uint32_t create_material(const render::Material& m, std::string* error) { return pipeline_.create_material(m, error); }
+    bool destroy_material(uint32_t id, std::string* error) { return pipeline_.destroy_material(id, error); }
     bool update_material(uint32_t id, const render::Material& m, std::string* error) {
         return pipeline_.update_material(id, m, error);
     }

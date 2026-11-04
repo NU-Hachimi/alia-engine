@@ -110,7 +110,7 @@ ae.run(Game(), argv=sys.argv[1:], title="Game", fixed_hz=60, app_id="com.example
 |---|---|
 | `e.input` | `Input`：`held`、`pressed`（按位置的按键位：`ae.SOUTH/EAST/WEST/NORTH/L1/R1/L2/R2/L3/R3/SELECT/START/UP/DOWN/LEFT/RIGHT`）、`lx ly rx ry`（-1..1，y 向下）、`lt rt`、`gamepad` |
 | `e.create_mesh(ae.Mesh(positions, indices, tri_palette=…, vertex_rgb=…, double_sided=False, submeshes=[…]))` → id | 几何用 bytes（`array('f')`、`array('H')`）；`update_mesh(id, mesh)`、`destroy_mesh(id)`；分段和材质见 §2 |
-| `e.create_material(ae.Material(...))` → id、`e.update_material(id, m)` | §2 |
+| `e.create_material(ae.Material(...))` → id、`e.update_material(id, m)`、`e.destroy_material(id)` | §2；`destroy_material` 只收没有网格在用的（先 `destroy_mesh`），id 以后可能给新材质（main 上新加的） |
 | `e.load_pack(path)` → `({网格名: id}, {材质名: id})`、`e.load_meshes(path)` → `{网格名: id}` | 资源包 `.apak`；相对路径取卡带的 `content/` |
 | `e.set_palette(rgb_bytes)` | 32 色调色板：最多 32 个 RGB 三元组（`bytes(r, g, b, r, g, b, …)`），索引 0 起。**不调也有一套默认的**（0 黑、1 白、2–5 灰、6 红、7 橙、8 黄、9 黄绿、10 绿、11 青、12 蓝、13 藏青、14 紫、15 品红、16 粉、17 棕、18 棕褐、19 米白、20 草绿、21 深绿、22 石灰、23 石板、24 天蓝、25 暮蓝、26–31 发光用的亮黄、珊瑚、亮青、亮黄绿、亮粉、近白）；有自己画风的游戏换掉它 |
 | `e.world`、`e.actions`、`e.audio`、`e.rumble(...)` | 世界（§3）、输入动作和声音（§7）；常用的相机、角色控制器在 `alia_kit`（§7.1） |

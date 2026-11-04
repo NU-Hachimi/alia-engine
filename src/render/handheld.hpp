@@ -148,7 +148,9 @@ public:
     // materials that exist when the mesh is built.
     uint32_t create_material(const Material& m, std::string* error);
     bool update_material(uint32_t id, const Material& m, std::string* error);
-    bool has_material(uint32_t id) const { return id >= 1 && id < materials_.size(); }
+    bool has_material(uint32_t id) const { return id >= 1 && id < materials_.size() && material_live_[id]; }
+    // Frees a material no mesh uses any more (false and why otherwise); its id may be given to a new one.
+    bool destroy_material(uint32_t id, std::string* error);
 
     // Meshes: ids start at 1. update_mesh replaces the geometry (dynamic meshes: ropes, trails).
     uint32_t create_mesh(rhi::Device& dev, const MeshDesc& desc, std::string* error);
@@ -218,6 +220,7 @@ private:
     size_t hud_capacity_ = 0;
     std::vector<Mesh> meshes_;  // index = id - 1
     std::vector<Material> materials_{Material{}};  // index = id; [0]: the default material
+    std::vector<bool> material_live_{true};         // false: destroyed, the slot free for create_material
     PipelineStats stats_;
 };
 

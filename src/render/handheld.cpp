@@ -447,8 +447,32 @@ bool HandheldPipeline::check_material(const Material& m, std::string* error) {
 
 uint32_t HandheldPipeline::create_material(const Material& m, std::string* error) {
     if (!check_material(m, error)) return 0;
+    for (uint32_t id = 1; id < materials_.size(); id++)  // a destroyed one's slot first
+        if (!material_live_[id]) {
+            materials_[id] = m;
+            material_live_[id] = true;
+            return id;
+        }
     materials_.push_back(m);
+    material_live_.push_back(true);
     return uint32_t(materials_.size() - 1);
+}
+
+bool HandheldPipeline::destroy_material(uint32_t id, std::string* error) {
+    if (!has_material(id)) {
+        *error = "material: unknown id (or the default material, 0)";
+        return false;
+    }
+    for (size_t k = 0; k < meshes_.size(); k++)
+        if (meshes_[k].live)
+            for (const Part& part : meshes_[k].parts)
+                if (part.material == id) {
+                    *error = "material " + std::to_string(id) + ": mesh " + std::to_string(k + 1) + " still uses it (destroy the mesh first)";
+                    return false;
+                }
+    materials_[id] = Material{};
+    material_live_[id] = false;
+    return true;
 }
 
 bool HandheldPipeline::update_material(uint32_t id, const Material& m, std::string* error) {

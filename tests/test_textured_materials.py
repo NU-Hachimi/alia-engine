@@ -115,6 +115,28 @@ with tempfile.TemporaryDirectory() as tmp:
     except (ValueError, RuntimeError):
         check(True, "a textured material without uv: an error")
 
+    # destroy_material: refused while a mesh uses it; freed after; the id can come back for a new material
+    face = e.create_material(ae.Material(shading=ae.Shading.UNLIT, color=ae.ColorSource.TEXTURE))
+    face_mesh = e.create_mesh(kit.quad(1, 1, face))
+    try:
+        e.destroy_material(face)
+        check(False, "destroy_material: refused while a mesh uses it")
+    except ValueError:
+        check(True, "destroy_material: refused while a mesh uses it")
+    e.destroy_mesh(face_mesh)
+    e.destroy_material(face)
+    try:
+        e.update_material(face, ae.Material())
+        check(False, "a destroyed material: gone")
+    except ValueError:
+        check(True, "a destroyed material: gone")
+    check(e.create_material(ae.Material()) == face, "its id is given to the next material")
+    try:
+        e.destroy_material(0)
+        check(False, "the default material can't be destroyed")
+    except ValueError:
+        check(True, "the default material can't be destroyed")
+
     # packs: uv and a textured material, the texture set by the game
     w_ = PackWriter()
     w_.add_material("pic", shading="unlit", color="texture", alpha_mode="cutout")
