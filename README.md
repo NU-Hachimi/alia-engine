@@ -25,6 +25,7 @@ build/test_golden --update                      # 改了渲染以后重新生成
 build/alia-bench                                # 合成负载的帧耗时表（E2；板上的数字见 docs/architecture.md §6.2）
 (cd apps/sandbox && ../../tools/alia.py run)     # sandbox：每个引擎特性一个展台、自由相机、实时统计（视觉检验）
 (cd apps/sample && ../../tools/alia.py run)      # 示例游戏 Wisp Keeper（捕光）：推荐的游戏组织方式（apps/sample/README.md）
+(cd apps/sticks && ../../tools/alia.py run)      # 摇杆测试（pad.alia.engine.sticks）：两个摇杆的原始值、走过的范围（检查新摇杆）
 PYTHONPATH=build python -c "import alia_engine"  # Python 模块（L7），游戏卡带 import 它
 cmake --install build --prefix <卡带>/content     # python/alia_engine.abi3.so（稳定 ABI，Python ≥ 3.12）；lib/ 放共享库
 ```

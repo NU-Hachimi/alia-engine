@@ -1,0 +1,20 @@
+# The stick test as a cart: `tools/alia.py cart` in apps/sticks/ (docs/project.md).
+[cart]
+id          = "pad.alia.engine.sticks"
+title       = "Stick Test"
+version     = "0.1.0"
+publisher   = "Alia Pad (dev cart)"
+description = "Shows both analog sticks' raw values, range and centre drift."
+
+[locale.zh]
+title = "摇杆测试"
+
+[runtime]
+type  = "python"
+entry = "main.py"
+
+[display]
+render = "640x360"
+
+[input]
+uses = ["gamepad"]

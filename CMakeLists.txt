@@ -242,6 +242,8 @@ if(ALIA_BUILD_TESTS)
     # The sandbox keeps running: 30 frames headless through every exhibit.
     add_test(NAME sandbox COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/apps/sandbox/src/main.py --headless --frames 30)
     set_tests_properties(sandbox PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
+    add_test(NAME sticks COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/apps/sticks/src/main.py --headless --frames 30)
+    set_tests_properties(sticks PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     add_test(NAME kit COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_kit.py)
     set_tests_properties(kit PROPERTIES ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:alia_engine>")
     add_test(NAME plugin_tool COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_plugin_tool.py)

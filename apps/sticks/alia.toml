@@ -1,0 +1,6 @@
+# The stick test: both analog sticks' raw values (src/main.py). An alia-engine project (docs/project.md).
+[game]
+name = "sticks"
+
+[engine]
+version = ">=0.1, <1"
